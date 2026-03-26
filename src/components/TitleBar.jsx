@@ -1,8 +1,23 @@
 import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+const appWindow = getCurrentWindow();
+
 export default function TitleBar() {
-  const win = getCurrentWindow();
+  const handleMinimize = async () => {
+    try { await appWindow.minimize(); }
+    catch (e) { console.error("minimize failed:", e); }
+  };
+
+  const handleMaximize = async () => {
+    try { await appWindow.toggleMaximize(); }
+    catch (e) { console.error("maximize failed:", e); }
+  };
+
+  const handleClose = async () => {
+    try { await appWindow.close(); }
+    catch (e) { console.error("close failed:", e); }
+  };
 
   return (
     <div className="titlebar" data-tauri-drag-region>
@@ -11,9 +26,9 @@ export default function TitleBar() {
         <span>CYBERVAULT</span>
       </div>
       <div className="titlebar-controls">
-        <button onClick={() => win.minimize()}>─</button>
-        <button onClick={() => win.toggleMaximize()}>□</button>
-        <button className="close" onClick={() => win.close()}>✕</button>
+        <button onClick={handleMinimize}>─</button>
+        <button onClick={handleMaximize}>□</button>
+        <button className="close" onClick={handleClose}>✕</button>
       </div>
     </div>
   );
