@@ -487,11 +487,11 @@ class CyberVaultLauncher:
             )
 
             if ret != 0:
-                self.root.after(0, self._log, "Merge conflict — resolving with branch content...", "yellow")
+                self.root.after(0, self._log, "Merge conflict — keeping main's version of conflicting files...", "yellow")
                 self._run_cmd([GIT, "merge", "--abort"], cwd=path)
-                # Retry with theirs strategy for conflicts only
+                # Retry with ours strategy — main wins on conflicts, branch adds new files
                 self._run_cmd(
-                    [GIT, "merge", latest_branch, "-X", "theirs", "--no-edit",
+                    [GIT, "merge", latest_branch, "-X", "ours", "--no-edit",
                      "-m", f"Merge {latest_branch} into main (auto-launcher)"],
                     cwd=path
                 )
@@ -499,6 +499,10 @@ class CyberVaultLauncher:
             # Push to remote
             ret, _ = self._run_cmd([GIT, "push", "origin", "main"], cwd=path)
             if ret == 0:
+                # Clean up: delete the merged remote branch so it doesn't get re-merged
+                self.root.after(0, self._log, "Cleaning up merged branch...", "magenta")
+                remote_name = latest_branch.replace("origin/", "")
+                self._run_cmd([GIT, "push", "origin", "--delete", remote_name], cwd=path)
                 self.root.after(0, self._log, "Merge complete! Main is updated.", "green")
                 self.root.after(0, self._set_status, "MERGED", GREEN)
             else:
