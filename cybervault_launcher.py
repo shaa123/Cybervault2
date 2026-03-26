@@ -187,10 +187,28 @@ class CyberVaultLauncher:
         if d:
             self.repo_path.set(os.path.join(d, REPO_NAME))
 
-    def _get_path(self):
+    def _get_path(self, need_repo=True):
+        """Get repo path. If empty, prompt user to pick a folder.
+        If need_repo=True, verifies .git exists."""
         p = self.repo_path.get().strip()
         if not p:
-            self._log("ERROR: Set a repo path first.", "red")
+            chosen = filedialog.askdirectory(
+                title="Pick the folder where CyberVault2 is (or should be cloned)"
+            )
+            if not chosen:
+                self._log("Cancelled — no folder selected.", "yellow")
+                return None
+            # Check if they picked the repo itself or a parent
+            if os.path.basename(chosen) == REPO_NAME:
+                p = chosen
+            elif os.path.isdir(os.path.join(chosen, REPO_NAME)):
+                p = os.path.join(chosen, REPO_NAME)
+            else:
+                p = os.path.join(chosen, REPO_NAME)
+            self.repo_path.set(p)
+        if need_repo and not os.path.isdir(os.path.join(p, ".git")):
+            self._log(f"Repo not found at: {p}", "red")
+            self._log("Click CLONE REPO first to download it.", "yellow")
             return None
         return p
 
@@ -234,34 +252,16 @@ class CyberVaultLauncher:
 
     # ── Clone ──────────────────────────────────────────
     def _clone_repo(self):
-        path = self.repo_path.get().strip()
+        path = self._get_path(need_repo=False)
+        if not path:
+            return
 
-        # If path already has a cloned repo, skip
-        if path and os.path.isdir(os.path.join(path, ".git")):
+        if os.path.isdir(os.path.join(path, ".git")):
             self._log("Repo already cloned at: " + path, "green")
-            self._log("Skipping clone.", "green")
             self._set_status("ALREADY CLONED", GREEN)
             return
 
-        # If the default path's parent doesn't exist or user wants to pick, ask
-        parent = os.path.dirname(path) if path else ""
-        if not path or not os.path.isdir(parent):
-            chosen = filedialog.askdirectory(
-                title="Pick a folder to clone CyberVault2 into"
-            )
-            if not chosen:
-                self._log("Clone cancelled.", "yellow")
-                return
-            path = os.path.join(chosen, REPO_NAME)
-            self.repo_path.set(path)
-
         def task():
-            # Double-check after user picked
-            if os.path.isdir(os.path.join(path, ".git")):
-                self._log("Repo already exists at: " + path, "green")
-                self._set_status("ALREADY CLONED", GREEN)
-                return
-
             parent_dir = os.path.dirname(path)
             if parent_dir and not os.path.isdir(parent_dir):
                 os.makedirs(parent_dir, exist_ok=True)
@@ -283,9 +283,8 @@ class CyberVaultLauncher:
     # ── Merge all Claude branches ──────────────────────
     def _merge_branches(self):
         def task():
-            path = self._get_path()
-            if not path or not os.path.isdir(os.path.join(path, ".git")):
-                self._log("ERROR: Repo not found. Clone first.", "red")
+            path = self._get_path(need_repo=True)
+            if not path:
                 return
 
             self._set_status("MERGING BRANCHES...", MAGENTA)
@@ -376,9 +375,8 @@ class CyberVaultLauncher:
     # ── Install ────────────────────────────────────────
     def _install_deps(self):
         def task():
-            path = self._get_path()
-            if not path or not os.path.isfile(os.path.join(path, "package.json")):
-                self._log("ERROR: Repo not found or no package.json.", "red")
+            path = self._get_path(need_repo=True)
+            if not path:
                 return
 
             self._set_status("INSTALLING...", YELLOW)
@@ -398,9 +396,8 @@ class CyberVaultLauncher:
     # ── Run Dev ────────────────────────────────────────
     def _run_dev(self):
         def task():
-            path = self._get_path()
-            if not path or not os.path.isfile(os.path.join(path, "package.json")):
-                self._log("ERROR: Repo not found.", "red")
+            path = self._get_path(need_repo=True)
+            if not path:
                 return
 
             self._set_status("RUNNING DEV SERVER...", GREEN)
@@ -418,9 +415,8 @@ class CyberVaultLauncher:
     # ── Build Release ──────────────────────────────────
     def _build_release(self):
         def task():
-            path = self._get_path()
-            if not path or not os.path.isfile(os.path.join(path, "package.json")):
-                self._log("ERROR: Repo not found.", "red")
+            path = self._get_path(need_repo=True)
+            if not path:
                 return
 
             self._set_status("BUILDING RELEASE...", MAGENTA)
