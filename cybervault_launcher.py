@@ -8,11 +8,15 @@ import tkinter as tk
 from tkinter import scrolledtext, filedialog, messagebox
 import subprocess
 import threading
+import shutil
 import os
-import re
+import sys
 
 REPO_URL = "https://github.com/shaa123/Cybervault2.git"
 REPO_NAME = "Cybervault2"
+
+# On Windows, commands like npm/git need shell=True to find .cmd/.exe
+IS_WIN = sys.platform == "win32"
 
 # ── Colors ──────────────────────────────────────────────
 BG       = "#0a0a0f"
@@ -29,6 +33,23 @@ DIM      = "#6a6a8a"
 MUTED    = "#3a3a55"
 
 
+def _find_cmd(name):
+    """Find a command on PATH. On Windows, try name.cmd and name.exe too."""
+    found = shutil.which(name)
+    if found:
+        return found
+    if IS_WIN:
+        for ext in [".cmd", ".exe", ".bat"]:
+            found = shutil.which(name + ext)
+            if found:
+                return found
+    return name  # fallback, let subprocess try
+
+
+GIT = _find_cmd("git")
+NPM = _find_cmd("npm")
+
+
 class CyberVaultLauncher:
     def __init__(self):
         self.root = tk.Tk()
@@ -39,31 +60,36 @@ class CyberVaultLauncher:
 
         self.repo_path = tk.StringVar(value=self._find_repo())
         self.running = False
+        self._current_proc = None
 
         self._build_ui()
 
     # ── Locate repo ────────────────────────────────────
     def _find_repo(self):
         """Check common locations for the cloned repo. If not found, default to Desktop."""
+        # Check if we're inside the repo already
+        cwd = os.getcwd()
+        if os.path.isdir(os.path.join(cwd, ".git")):
+            if os.path.basename(os.path.abspath(cwd)) == REPO_NAME:
+                return cwd
+
         candidates = [
-            os.path.join(os.getcwd(), REPO_NAME),
+            os.path.join(cwd, REPO_NAME),
             os.path.join(os.path.expanduser("~"), REPO_NAME),
             os.path.join(os.path.expanduser("~"), "Desktop", REPO_NAME),
             os.path.join(os.path.expanduser("~"), "Documents", REPO_NAME),
             os.path.join(os.path.expanduser("~"), "Projects", REPO_NAME),
+            os.path.join(os.path.expanduser("~"), "Downloads", REPO_NAME),
         ]
-        # also check if we're inside the repo already
-        cwd = os.getcwd()
-        if os.path.isdir(os.path.join(cwd, ".git")) and os.path.basename(cwd) == REPO_NAME:
-            return cwd
         for c in candidates:
             if os.path.isdir(os.path.join(c, ".git")):
                 return c
-        # Not found — default to Desktop
+
+        # Not found anywhere — pick a sensible default
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-        if not os.path.isdir(desktop):
-            desktop = os.path.expanduser("~")
-        return os.path.join(desktop, REPO_NAME)
+        if os.path.isdir(desktop):
+            return os.path.join(desktop, REPO_NAME)
+        return os.path.join(os.path.expanduser("~"), REPO_NAME)
 
     # ── UI ─────────────────────────────────────────────
     def _build_ui(self):
@@ -183,14 +209,22 @@ class CyberVaultLauncher:
         self.status_dot.configure(fg=color)
 
     def _browse(self):
-        d = filedialog.askdirectory(title="Select parent folder for repo")
+        d = filedialog.askdirectory(title="Select folder where CyberVault2 is (or will be cloned)")
         if d:
-            self.repo_path.set(os.path.join(d, REPO_NAME))
+            # Smart detection: did they pick the repo itself or a parent?
+            if os.path.basename(d) == REPO_NAME:
+                self.repo_path.set(d)
+            elif os.path.isdir(os.path.join(d, REPO_NAME, ".git")):
+                self.repo_path.set(os.path.join(d, REPO_NAME))
+            else:
+                self.repo_path.set(os.path.join(d, REPO_NAME))
 
-    def _get_path(self, need_repo=True):
-        """Get repo path. If empty, prompt user to pick a folder.
-        If need_repo=True, verifies .git exists."""
+    def _require_path(self, need_repo=True):
+        """Get and validate the repo path. MUST be called from main thread.
+        Opens folder picker if path is empty. Returns path or None."""
         p = self.repo_path.get().strip()
+
+        # If empty, open folder picker
         if not p:
             chosen = filedialog.askdirectory(
                 title="Pick the folder where CyberVault2 is (or should be cloned)"
@@ -198,26 +232,28 @@ class CyberVaultLauncher:
             if not chosen:
                 self._log("Cancelled — no folder selected.", "yellow")
                 return None
-            # Check if they picked the repo itself or a parent
             if os.path.basename(chosen) == REPO_NAME:
                 p = chosen
-            elif os.path.isdir(os.path.join(chosen, REPO_NAME)):
-                p = os.path.join(chosen, REPO_NAME)
             else:
                 p = os.path.join(chosen, REPO_NAME)
             self.repo_path.set(p)
+
+        # Check repo exists if needed
         if need_repo and not os.path.isdir(os.path.join(p, ".git")):
             self._log(f"Repo not found at: {p}", "red")
             self._log("Click CLONE REPO first to download it.", "yellow")
             return None
+
         return p
 
-    def _run_cmd(self, cmd, cwd=None, shell=False):
-        """Run a command, stream output to log. Returns (returncode, full_output)."""
-        self._log(f"$ {cmd if isinstance(cmd, str) else ' '.join(cmd)}", "cyan")
+    def _run_cmd(self, cmd, cwd=None):
+        """Run a command, stream output to log. Returns (returncode, full_output).
+        Uses shell=True on Windows so .cmd/.bat executables are found."""
+        display = cmd if isinstance(cmd, str) else " ".join(cmd)
+        self.root.after(0, self._log, f"$ {display}", "cyan")
         try:
             proc = subprocess.Popen(
-                cmd, cwd=cwd, shell=shell,
+                cmd, cwd=cwd, shell=IS_WIN,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, bufsize=1
             )
@@ -231,10 +267,11 @@ class CyberVaultLauncher:
             self._current_proc = None
             return proc.returncode, "\n".join(output)
         except FileNotFoundError:
-            self._log(f"ERROR: Command not found: {cmd[0] if isinstance(cmd, list) else cmd}", "red")
+            msg = f"ERROR: Command not found: {cmd[0] if isinstance(cmd, list) else cmd}"
+            self.root.after(0, self._log, msg, "red")
             return 1, ""
         except Exception as e:
-            self._log(f"ERROR: {e}", "red")
+            self.root.after(0, self._log, f"ERROR: {e}", "red")
             return 1, ""
 
     def _threaded(self, fn):
@@ -252,7 +289,8 @@ class CyberVaultLauncher:
 
     # ── Clone ──────────────────────────────────────────
     def _clone_repo(self):
-        path = self._get_path(need_repo=False)
+        # _require_path on main thread (no need_repo — we're about to clone)
+        path = self._require_path(need_repo=False)
         if not path:
             return
 
@@ -266,40 +304,41 @@ class CyberVaultLauncher:
             if parent_dir and not os.path.isdir(parent_dir):
                 os.makedirs(parent_dir, exist_ok=True)
 
-            self._set_status("CLONING...", CYAN)
-            self._log("═" * 50, "cyan")
-            self._log(f"CLONING INTO: {path}", "cyan")
+            self.root.after(0, self._set_status, "CLONING...", CYAN)
+            self.root.after(0, self._log, "═" * 50, "cyan")
+            self.root.after(0, self._log, f"CLONING INTO: {path}", "cyan")
 
-            ret, _ = self._run_cmd(["git", "clone", REPO_URL, path])
+            ret, _ = self._run_cmd([GIT, "clone", REPO_URL, path])
             if ret == 0:
-                self._log("Clone complete!", "green")
-                self._set_status("CLONED", GREEN)
+                self.root.after(0, self._log, "Clone complete!", "green")
+                self.root.after(0, self._set_status, "CLONED", GREEN)
             else:
-                self._log("Clone failed!", "red")
-                self._set_status("CLONE FAILED", RED)
+                self.root.after(0, self._log, "Clone failed!", "red")
+                self.root.after(0, self._set_status, "CLONE FAILED", RED)
 
         self._threaded(task)
 
     # ── Merge all Claude branches ──────────────────────
     def _merge_branches(self):
+        # Validate path on main thread first
+        path = self._require_path(need_repo=True)
+        if not path:
+            return
+
         def task():
-            path = self._get_path(need_repo=True)
-            if not path:
-                return
+            self.root.after(0, self._set_status, "MERGING BRANCHES...", MAGENTA)
+            self.root.after(0, self._log, "═" * 50, "magenta")
+            self.root.after(0, self._log, "FETCHING ALL REMOTE BRANCHES...", "magenta")
 
-            self._set_status("MERGING BRANCHES...", MAGENTA)
-            self._log("═" * 50, "magenta")
-            self._log("FETCHING ALL REMOTE BRANCHES...", "magenta")
-
-            self._run_cmd(["git", "fetch", "--all"], cwd=path)
-            self._run_cmd(["git", "checkout", "main"], cwd=path)
-            self._run_cmd(["git", "pull", "origin", "main"], cwd=path)
+            self._run_cmd([GIT, "fetch", "--all"], cwd=path)
+            self._run_cmd([GIT, "checkout", "main"], cwd=path)
+            self._run_cmd([GIT, "pull", "origin", "main"], cwd=path)
 
             # List all remote claude/* branches
-            ret, output = self._run_cmd(["git", "branch", "-r"], cwd=path)
+            ret, output = self._run_cmd([GIT, "branch", "-r"], cwd=path)
             if ret != 0:
-                self._log("Failed to list branches.", "red")
-                self._set_status("MERGE FAILED", RED)
+                self.root.after(0, self._log, "Failed to list branches.", "red")
+                self.root.after(0, self._set_status, "MERGE FAILED", RED)
                 return
 
             claude_branches = []
@@ -309,13 +348,13 @@ class CyberVaultLauncher:
                     claude_branches.append(line)
 
             if not claude_branches:
-                self._log("No Claude branches found. Main is up to date.", "green")
-                self._set_status("NOTHING TO MERGE", GREEN)
+                self.root.after(0, self._log, "No Claude branches found. Main is up to date.", "green")
+                self.root.after(0, self._set_status, "NOTHING TO MERGE", GREEN)
                 return
 
-            self._log(f"Found {len(claude_branches)} Claude branch(es):", "magenta")
+            self.root.after(0, self._log, f"Found {len(claude_branches)} Claude branch(es):", "magenta")
             for b in claude_branches:
-                self._log(f"  → {b}", "yellow")
+                self.root.after(0, self._log, f"  → {b}", "yellow")
 
             # Find the branch with the latest commit
             latest_branch = None
@@ -323,7 +362,7 @@ class CyberVaultLauncher:
 
             for branch in claude_branches:
                 ret, ts = self._run_cmd(
-                    ["git", "log", "-1", "--format=%ct", branch], cwd=path
+                    [GIT, "log", "-1", "--format=%ct", branch], cwd=path
                 )
                 if ret == 0 and ts.strip():
                     try:
@@ -335,108 +374,106 @@ class CyberVaultLauncher:
                         pass
 
             if not latest_branch:
-                self._log("Could not determine latest branch.", "red")
-                self._set_status("MERGE FAILED", RED)
+                self.root.after(0, self._log, "Could not determine latest branch.", "red")
+                self.root.after(0, self._set_status, "MERGE FAILED", RED)
                 return
 
-            self._log(f"\nLatest branch: {latest_branch}", "cyan")
-            self._log("Merging with strategy: overwrite main with branch content...", "magenta")
+            self.root.after(0, self._log, f"\nLatest branch: {latest_branch}", "cyan")
+            self.root.after(0, self._log, "Merging with strategy: overwrite main with branch content...", "magenta")
 
             # Merge using theirs strategy — branch content overwrites main
             ret, _ = self._run_cmd(
-                ["git", "merge", latest_branch, "-X", "theirs", "--no-edit",
+                [GIT, "merge", latest_branch, "-X", "theirs", "--no-edit",
                  "-m", f"Merge {latest_branch} into main (auto-launcher)"],
                 cwd=path
             )
 
             if ret != 0:
-                self._log("Standard merge failed, trying force checkout merge...", "yellow")
-                # Nuclear option: reset main to the branch content
-                local_branch = latest_branch.replace("origin/", "")
-                self._run_cmd(["git", "checkout", latest_branch, "--", "."], cwd=path)
-                self._run_cmd(["git", "add", "-A"], cwd=path)
+                self.root.after(0, self._log, "Standard merge failed, trying force checkout merge...", "yellow")
+                self._run_cmd([GIT, "checkout", latest_branch, "--", "."], cwd=path)
+                self._run_cmd([GIT, "add", "-A"], cwd=path)
                 self._run_cmd(
-                    ["git", "commit", "-m",
+                    [GIT, "commit", "-m",
                      f"Merge {latest_branch} into main (overwrite)"],
                     cwd=path
                 )
 
             # Push to remote
-            ret, _ = self._run_cmd(["git", "push", "origin", "main"], cwd=path)
+            ret, _ = self._run_cmd([GIT, "push", "origin", "main"], cwd=path)
             if ret == 0:
-                self._log("Merge complete! Main is updated.", "green")
-                self._set_status("MERGED", GREEN)
+                self.root.after(0, self._log, "Merge complete! Main is updated.", "green")
+                self.root.after(0, self._set_status, "MERGED", GREEN)
             else:
-                self._log("Push failed — you may need to push manually.", "yellow")
-                self._set_status("MERGED (NOT PUSHED)", YELLOW)
+                self.root.after(0, self._log, "Push failed — you may need to push manually.", "yellow")
+                self.root.after(0, self._set_status, "MERGED (NOT PUSHED)", YELLOW)
 
         self._threaded(task)
 
     # ── Install ────────────────────────────────────────
     def _install_deps(self):
+        path = self._require_path(need_repo=True)
+        if not path:
+            return
+
         def task():
-            path = self._get_path(need_repo=True)
-            if not path:
-                return
+            self.root.after(0, self._set_status, "INSTALLING...", YELLOW)
+            self.root.after(0, self._log, "═" * 50, "yellow")
+            self.root.after(0, self._log, "INSTALLING NPM DEPENDENCIES...", "yellow")
 
-            self._set_status("INSTALLING...", YELLOW)
-            self._log("═" * 50, "yellow")
-            self._log("INSTALLING NPM DEPENDENCIES...", "yellow")
-
-            ret, _ = self._run_cmd(["npm", "install"], cwd=path)
+            ret, _ = self._run_cmd([NPM, "install"], cwd=path)
             if ret == 0:
-                self._log("Dependencies installed!", "green")
-                self._set_status("INSTALLED", GREEN)
+                self.root.after(0, self._log, "Dependencies installed!", "green")
+                self.root.after(0, self._set_status, "INSTALLED", GREEN)
             else:
-                self._log("Install failed!", "red")
-                self._set_status("INSTALL FAILED", RED)
+                self.root.after(0, self._log, "Install failed!", "red")
+                self.root.after(0, self._set_status, "INSTALL FAILED", RED)
 
         self._threaded(task)
 
     # ── Run Dev ────────────────────────────────────────
     def _run_dev(self):
+        path = self._require_path(need_repo=True)
+        if not path:
+            return
+
         def task():
-            path = self._get_path(need_repo=True)
-            if not path:
-                return
+            self.root.after(0, self._set_status, "RUNNING DEV SERVER...", GREEN)
+            self.root.after(0, self._log, "═" * 50, "green")
+            self.root.after(0, self._log, "STARTING TAURI DEV MODE...", "green")
 
-            self._set_status("RUNNING DEV SERVER...", GREEN)
-            self._log("═" * 50, "green")
-            self._log("STARTING TAURI DEV MODE...", "green")
-
-            ret, _ = self._run_cmd(["npm", "run", "tauri", "dev"], cwd=path)
+            ret, _ = self._run_cmd([NPM, "run", "tauri", "dev"], cwd=path)
             if ret == 0:
-                self._set_status("DEV SERVER STOPPED", DIM)
+                self.root.after(0, self._set_status, "DEV SERVER STOPPED", DIM)
             else:
-                self._set_status("DEV SERVER EXITED", YELLOW)
+                self.root.after(0, self._set_status, "DEV SERVER EXITED", YELLOW)
 
         self._threaded(task)
 
     # ── Build Release ──────────────────────────────────
     def _build_release(self):
+        path = self._require_path(need_repo=True)
+        if not path:
+            return
+
         def task():
-            path = self._get_path(need_repo=True)
-            if not path:
-                return
+            self.root.after(0, self._set_status, "BUILDING RELEASE...", MAGENTA)
+            self.root.after(0, self._log, "═" * 50, "magenta")
+            self.root.after(0, self._log, "BUILDING RELEASE BINARY...", "magenta")
+            self.root.after(0, self._log, "This may take several minutes...", "yellow")
 
-            self._set_status("BUILDING RELEASE...", MAGENTA)
-            self._log("═" * 50, "magenta")
-            self._log("BUILDING RELEASE BINARY...", "magenta")
-            self._log("This may take several minutes...", "yellow")
-
-            ret, _ = self._run_cmd(["npm", "run", "tauri", "build"], cwd=path)
+            ret, _ = self._run_cmd([NPM, "run", "tauri", "build"], cwd=path)
             if ret == 0:
-                self._log("Build complete! Check src-tauri/target/release/", "green")
-                self._set_status("BUILD COMPLETE", GREEN)
+                self.root.after(0, self._log, "Build complete! Check src-tauri/target/release/", "green")
+                self.root.after(0, self._set_status, "BUILD COMPLETE", GREEN)
             else:
-                self._log("Build failed!", "red")
-                self._set_status("BUILD FAILED", RED)
+                self.root.after(0, self._log, "Build failed!", "red")
+                self.root.after(0, self._set_status, "BUILD FAILED", RED)
 
         self._threaded(task)
 
     # ── Stop ───────────────────────────────────────────
     def _stop_process(self):
-        proc = getattr(self, "_current_proc", None)
+        proc = self._current_proc
         if proc and proc.poll() is None:
             proc.terminate()
             self._log("Process terminated.", "red")
@@ -448,12 +485,14 @@ class CyberVaultLauncher:
     def run(self):
         self._log("◆ CyberVault Launcher initialized", "cyan")
         self._log(f"  Repo URL: {REPO_URL}", "cyan")
+        self._log(f"  Git: {GIT}", "cyan")
+        self._log(f"  npm: {NPM}", "cyan")
         path = self.repo_path.get()
         if path and os.path.isdir(os.path.join(path, ".git")):
             self._log(f"  Repo found: {path}", "green")
         else:
-            self._log(f"  Default path: {path}", "yellow")
-            self._log("  Repo not cloned yet — click CLONE REPO to get started", "yellow")
+            self._log(f"  Clone path: {path}", "yellow")
+            self._log("  Click CLONE REPO to download the repository", "yellow")
         self._log("═" * 50, "cyan")
         self.root.mainloop()
 
