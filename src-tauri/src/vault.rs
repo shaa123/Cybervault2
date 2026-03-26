@@ -55,6 +55,9 @@ impl VaultManager {
         let vault_root = Self::get_vault_root()?;
         fs::create_dir_all(&vault_root).map_err(|e| e.to_string())?;
 
+        // Migrate from old paths that used ".." components
+        Self::migrate_old_vault(&vault_root);
+
         let index_path = vault_root.join(".vault_idx");
         let index = if index_path.exists() {
             let data = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
@@ -76,35 +79,74 @@ impl VaultManager {
         })
     }
 
+    fn migrate_old_vault(new_root: &Path) {
+        // Check for index in old paths and copy it over
+        let old_paths: Vec<PathBuf> = {
+            #[cfg(target_os = "windows")]
+            {
+                let app_data = std::env::var("LOCALAPPDATA")
+                    .unwrap_or_else(|_| "C:\\Users\\Public".to_string());
+                vec![
+                    PathBuf::from(&app_data)
+                        .join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\AutoLogger\\..cache"),
+                    PathBuf::from(&app_data)
+                        .join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\cache"),
+                ]
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                vec![
+                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/..system/.dbus-monitor/.gvfs-metadata/..vault"),
+                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/.dbus-monitor/.gvfs-metadata/..vault"),
+                ]
+            }
+        };
+
+        let new_idx = new_root.join(".vault_idx");
+        if new_idx.exists() {
+            return; // Already migrated or fresh install
+        }
+
+        for old_root in old_paths {
+            let old_idx = old_root.join(".vault_idx");
+            if old_idx.exists() {
+                // Copy the index file to new location
+                let _ = fs::copy(&old_idx, &new_idx);
+                return;
+            }
+        }
+    }
+
     fn get_vault_root() -> Result<PathBuf, String> {
-        // Use platform-specific deep hidden paths
+        // Use platform-specific deep hidden paths (no ".." components!)
         #[cfg(target_os = "windows")]
         {
             let app_data = std::env::var("LOCALAPPDATA")
                 .unwrap_or_else(|_| "C:\\Users\\Public".to_string());
-            Ok(PathBuf::from(app_data)
+            let root = PathBuf::from(app_data)
                 .join("Microsoft")
                 .join("Windows")
                 .join("INetCache")
                 .join("Content.MSO")
                 .join("SystemTelemetry")
                 .join("DiagTrack")
-                .join("AutoLogger")
-                .join("..cache"))
+                .join(".cybervault_store");
+            Ok(root)
         }
         #[cfg(not(target_os = "windows"))]
         {
             let home = std::env::var("HOME")
                 .unwrap_or_else(|_| "/tmp".to_string());
-            Ok(PathBuf::from(home)
+            let root = PathBuf::from(home)
                 .join(".local")
                 .join("share")
                 .join(".cache")
                 .join(".thumbnails")
-                .join("..system")
                 .join(".dbus-monitor")
                 .join(".gvfs-metadata")
-                .join("..vault"))
+                .join(".cybervault_store");
+            Ok(root)
         }
     }
 
