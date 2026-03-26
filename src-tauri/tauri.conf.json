@@ -28,19 +28,5 @@
       "csp": null
     }
   },
-  "plugins": {
-    "fs": {
-      "scope": {
-        "allow": ["**"],
-        "requireLiteralLeadingDot": false
-      }
-    },
-    "dialog": {
-      "open": true,
-      "save": true
-    },
-    "shell": {
-      "open": true
-    }
-  }
+  "plugins": {}
 }
