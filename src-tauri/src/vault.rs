@@ -169,12 +169,24 @@ impl VaultManager {
     }
 
     fn obfuscate_index(data: &str) -> String {
-        // Simple byte-shift obfuscation for the index file
-        data.bytes().map(|b| (b.wrapping_add(47)) as char).collect()
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.encode(data.as_bytes())
     }
 
     fn deobfuscate_index(data: &str) -> String {
-        data.bytes().map(|b| (b.wrapping_sub(47)) as char).collect()
+        use base64::Engine;
+        match base64::engine::general_purpose::STANDARD.decode(data.trim()) {
+            Ok(bytes) => String::from_utf8(bytes).unwrap_or_default(),
+            Err(_) => {
+                // Fallback: try old byte-shift method for migration
+                let decoded: String = data.bytes().map(|b| (b.wrapping_sub(47)) as char).collect();
+                if decoded.starts_with('{') {
+                    decoded
+                } else {
+                    String::new()
+                }
+            }
+        }
     }
 
     fn save_index(&self) -> Result<(), String> {
