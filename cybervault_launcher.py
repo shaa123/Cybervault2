@@ -446,23 +446,40 @@ class CyberVaultLauncher:
                 self.root.after(0, self._set_status, "MERGE FAILED", RED)
                 return
 
-            self.root.after(0, self._log, f"\nLatest branch: {latest_branch}", "cyan")
-            self.root.after(0, self._log, "Merging with strategy: overwrite main with branch content...", "magenta")
+            # Check if the branch is actually ahead of main
+            ret, ahead = self._run_cmd(
+                [GIT, "rev-list", "--count", "main.." + latest_branch], cwd=path
+            )
+            ahead_count = 0
+            if ret == 0:
+                try:
+                    ahead_count = int(ahead.strip().splitlines()[-1])
+                except (ValueError, IndexError):
+                    pass
 
-            # Merge using theirs strategy — branch content overwrites main
+            if ahead_count == 0:
+                self.root.after(0, self._log, f"\n{latest_branch} is already merged into main.", "green")
+                self.root.after(0, self._log, "Nothing to merge — main is up to date.", "green")
+                self.root.after(0, self._set_status, "ALREADY UP TO DATE", GREEN)
+                return
+
+            self.root.after(0, self._log, f"\nLatest branch: {latest_branch} ({ahead_count} commits ahead)", "cyan")
+            self.root.after(0, self._log, "Merging new commits into main...", "magenta")
+
+            # Standard merge (main stays authoritative, branch adds new stuff)
             ret, _ = self._run_cmd(
-                [GIT, "merge", latest_branch, "-X", "theirs", "--no-edit",
+                [GIT, "merge", latest_branch, "--no-edit",
                  "-m", f"Merge {latest_branch} into main (auto-launcher)"],
                 cwd=path
             )
 
             if ret != 0:
-                self.root.after(0, self._log, "Standard merge failed, trying force checkout merge...", "yellow")
-                self._run_cmd([GIT, "checkout", latest_branch, "--", "."], cwd=path)
-                self._run_cmd([GIT, "add", "-A"], cwd=path)
+                self.root.after(0, self._log, "Merge conflict — resolving with branch content...", "yellow")
+                self._run_cmd([GIT, "merge", "--abort"], cwd=path)
+                # Retry with theirs strategy for conflicts only
                 self._run_cmd(
-                    [GIT, "commit", "-m",
-                     f"Merge {latest_branch} into main (overwrite)"],
+                    [GIT, "merge", latest_branch, "-X", "theirs", "--no-edit",
+                     "-m", f"Merge {latest_branch} into main (auto-launcher)"],
                     cwd=path
                 )
 
@@ -499,6 +516,19 @@ class CyberVaultLauncher:
 
         self._threaded(task)
 
+    def _auto_npm_install(self, path):
+        """Auto-run npm install if node_modules is missing. Returns True if ready."""
+        nm = os.path.join(path, "node_modules")
+        if os.path.isdir(nm):
+            return True
+        self.root.after(0, self._log, "node_modules not found — running npm install first...", "yellow")
+        ret, _ = self._run_cmd([NPM, "install"], cwd=path)
+        if ret != 0:
+            self.root.after(0, self._log, "npm install failed! Run INSTALL DEPS manually.", "red")
+            return False
+        self.root.after(0, self._log, "Dependencies installed.", "green")
+        return True
+
     # ── Run Dev ────────────────────────────────────────
     def _run_dev(self):
         path = self._require_path(need_repo=True)
@@ -506,11 +536,14 @@ class CyberVaultLauncher:
             return
 
         def task():
+            if not self._auto_npm_install(path):
+                self.root.after(0, self._set_status, "INSTALL FAILED", RED)
+                return
+
             self.root.after(0, self._set_status, "RUNNING DEV SERVER...", GREEN)
             self.root.after(0, self._log, "═" * 50, "green")
             self.root.after(0, self._log, "STARTING TAURI DEV MODE...", "green")
 
-            # Uses npm run tauri dev → runs @tauri-apps/cli from node_modules
             ret, _ = self._run_cmd([NPM, "run", "tauri", "dev"], cwd=path)
             if ret == 0:
                 self.root.after(0, self._set_status, "DEV SERVER STOPPED", DIM)
@@ -526,12 +559,15 @@ class CyberVaultLauncher:
             return
 
         def task():
+            if not self._auto_npm_install(path):
+                self.root.after(0, self._set_status, "INSTALL FAILED", RED)
+                return
+
             self.root.after(0, self._set_status, "BUILDING RELEASE...", MAGENTA)
             self.root.after(0, self._log, "═" * 50, "magenta")
             self.root.after(0, self._log, "BUILDING RELEASE BINARY...", "magenta")
             self.root.after(0, self._log, "This may take several minutes...", "yellow")
 
-            # Uses npm run tauri build → runs @tauri-apps/cli from node_modules
             ret, _ = self._run_cmd([NPM, "run", "tauri", "build"], cwd=path)
             if ret == 0:
                 self.root.after(0, self._log, "Build complete! Check src-tauri/target/release/", "green")
