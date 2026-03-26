@@ -34,20 +34,73 @@ MUTED    = "#3a3a55"
 
 
 def _find_cmd(name):
-    """Find a command on PATH. On Windows, try name.cmd and name.exe too."""
-    found = shutil.which(name)
-    if found:
-        return found
+    """Find a command on PATH, then check common Windows install locations."""
+    # 1) Try PATH first (with Windows extensions)
+    for variant in [name] + ([name + ".cmd", name + ".exe", name + ".bat"] if IS_WIN else []):
+        found = shutil.which(variant)
+        if found:
+            return found
+
+    # 2) On Windows, scan common install directories
     if IS_WIN:
-        for ext in [".cmd", ".exe", ".bat"]:
-            found = shutil.which(name + ext)
-            if found:
-                return found
-    return name  # fallback, let subprocess try
+        search_dirs = []
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        appdata = os.environ.get("APPDATA", "")
+        localappdata = os.environ.get("LOCALAPPDATA", "")
+
+        if name == "npm":
+            # Node.js / npm common locations
+            search_dirs = [
+                os.path.join(program_files, "nodejs"),
+                os.path.join(program_files_x86, "nodejs"),
+                os.path.join(appdata, "npm"),
+                os.path.join(localappdata, "fnm_multishells"),  # fnm
+                os.path.join(os.path.expanduser("~"), ".nvm"),  # nvm-windows
+                os.path.join(program_files, "nvm"),
+            ]
+            # Also check nvm-windows installed versions
+            nvm_home = os.environ.get("NVM_HOME", os.path.join(program_files, "nvm"))
+            if os.path.isdir(nvm_home):
+                try:
+                    for d in os.listdir(nvm_home):
+                        full = os.path.join(nvm_home, d)
+                        if os.path.isdir(full) and d.startswith("v"):
+                            search_dirs.append(full)
+                except OSError:
+                    pass
+            # nvm symlink directory
+            nvm_symlink = os.environ.get("NVM_SYMLINK", os.path.join(program_files, "nodejs"))
+            search_dirs.append(nvm_symlink)
+
+        elif name == "git":
+            search_dirs = [
+                os.path.join(program_files, "Git", "cmd"),
+                os.path.join(program_files, "Git", "bin"),
+                os.path.join(program_files_x86, "Git", "cmd"),
+                os.path.join(localappdata, "Programs", "Git", "cmd"),
+            ]
+
+        elif name == "cargo":
+            search_dirs = [
+                os.path.join(os.path.expanduser("~"), ".cargo", "bin"),
+                os.path.join(os.path.expanduser("~"), ".rustup", "toolchains"),
+            ]
+
+        for d in search_dirs:
+            if not os.path.isdir(d):
+                continue
+            for ext in [".cmd", ".exe", ".bat", ""]:
+                candidate = os.path.join(d, name + ext)
+                if os.path.isfile(candidate):
+                    return candidate
+
+    return None  # not found
 
 
 GIT = _find_cmd("git")
 NPM = _find_cmd("npm")
+CARGO = _find_cmd("cargo")
 
 
 class CyberVaultLauncher:
@@ -249,6 +302,20 @@ class CyberVaultLauncher:
     def _run_cmd(self, cmd, cwd=None):
         """Run a command, stream output to log. Returns (returncode, full_output).
         Uses shell=True on Windows so .cmd/.bat executables are found."""
+        # Check if the command binary was resolved
+        exe = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
+        if exe is None or (not os.path.isfile(exe) and not shutil.which(exe)):
+            name = os.path.basename(exe) if exe else "unknown"
+            self.root.after(0, self._log, f"ERROR: '{name}' not found on this system!", "red")
+            if "npm" in (name or ""):
+                self.root.after(0, self._log, "  → Install Node.js from https://nodejs.org (LTS)", "yellow")
+                self.root.after(0, self._log, "  → After install, RESTART this launcher", "yellow")
+            elif "git" in (name or ""):
+                self.root.after(0, self._log, "  → Install Git from https://git-scm.com", "yellow")
+            elif "cargo" in (name or ""):
+                self.root.after(0, self._log, "  → Install Rust from https://rustup.rs", "yellow")
+            return 1, ""
+
         display = cmd if isinstance(cmd, str) else " ".join(cmd)
         self.root.after(0, self._log, f"$ {display}", "cyan")
         try:
@@ -267,8 +334,9 @@ class CyberVaultLauncher:
             self._current_proc = None
             return proc.returncode, "\n".join(output)
         except FileNotFoundError:
-            msg = f"ERROR: Command not found: {cmd[0] if isinstance(cmd, list) else cmd}"
-            self.root.after(0, self._log, msg, "red")
+            name = cmd[0] if isinstance(cmd, list) else cmd
+            self.root.after(0, self._log, f"ERROR: '{name}' not found!", "red")
+            self.root.after(0, self._log, "  → Make sure it's installed and restart the launcher", "yellow")
             return 1, ""
         except Exception as e:
             self.root.after(0, self._log, f"ERROR: {e}", "red")
@@ -485,8 +553,28 @@ class CyberVaultLauncher:
     def run(self):
         self._log("◆ CyberVault Launcher initialized", "cyan")
         self._log(f"  Repo URL: {REPO_URL}", "cyan")
-        self._log(f"  Git: {GIT}", "cyan")
-        self._log(f"  npm: {NPM}", "cyan")
+        self._log("", None)
+
+        # Show tool status
+        self._log("  SYSTEM CHECK:", "cyan")
+        if GIT:
+            self._log(f"  ✓ Git:   {GIT}", "green")
+        else:
+            self._log("  ✗ Git:   NOT FOUND — install from https://git-scm.com", "red")
+
+        if NPM:
+            self._log(f"  ✓ npm:   {NPM}", "green")
+        else:
+            self._log("  ✗ npm:   NOT FOUND — install Node.js from https://nodejs.org", "red")
+            self._log("           Download the LTS version, install it, then RESTART this launcher", "yellow")
+
+        if CARGO:
+            self._log(f"  ✓ Cargo: {CARGO}", "green")
+        else:
+            self._log("  ✗ Cargo: NOT FOUND — install Rust from https://rustup.rs (needed for build)", "yellow")
+
+        self._log("", None)
+
         path = self.repo_path.get()
         if path and os.path.isdir(os.path.join(path, ".git")):
             self._log(f"  Repo found: {path}", "green")
