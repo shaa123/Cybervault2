@@ -366,13 +366,22 @@ class CyberVaultLauncher:
 
         def task():
             if already_cloned:
-                # Repo exists — pull latest
+                # Repo exists — stash local changes, pull latest, restore
                 self.root.after(0, self._set_status, "PULLING...", CYAN)
                 self.root.after(0, self._log, "═" * 50, "cyan")
                 self.root.after(0, self._log, f"PULLING LATEST FROM: {path}", "cyan")
 
+                # Stash any local changes so pull doesn't fail or delete them
+                self.root.after(0, self._log, "Saving local changes...", "yellow")
+                self._run_cmd([GIT, "stash", "--include-untracked"], cwd=path)
+
                 self._run_cmd([GIT, "checkout", "main"], cwd=path)
                 ret, _ = self._run_cmd([GIT, "pull", "origin", "main"], cwd=path)
+
+                # Restore stashed changes (if any)
+                self.root.after(0, self._log, "Restoring local changes...", "yellow")
+                self._run_cmd([GIT, "stash", "pop"], cwd=path)
+
                 if ret == 0:
                     self.root.after(0, self._log, "Pull complete! You have the latest code.", "green")
                     self.root.after(0, self._set_status, "UP TO DATE", GREEN)
