@@ -44,7 +44,7 @@ class CyberVaultLauncher:
 
     # ── Locate repo ────────────────────────────────────
     def _find_repo(self):
-        """Check common locations for the cloned repo."""
+        """Check common locations for the cloned repo. If not found, default to Desktop."""
         candidates = [
             os.path.join(os.getcwd(), REPO_NAME),
             os.path.join(os.path.expanduser("~"), REPO_NAME),
@@ -59,7 +59,11 @@ class CyberVaultLauncher:
         for c in candidates:
             if os.path.isdir(os.path.join(c, ".git")):
                 return c
-        return ""
+        # Not found — default to Desktop
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        if not os.path.isdir(desktop):
+            desktop = os.path.expanduser("~")
+        return os.path.join(desktop, REPO_NAME)
 
     # ── UI ─────────────────────────────────────────────
     def _build_ui(self):
@@ -230,23 +234,41 @@ class CyberVaultLauncher:
 
     # ── Clone ──────────────────────────────────────────
     def _clone_repo(self):
-        def task():
-            path = self._get_path()
-            if not path:
-                return
+        path = self.repo_path.get().strip()
 
+        # If path already has a cloned repo, skip
+        if path and os.path.isdir(os.path.join(path, ".git")):
+            self._log("Repo already cloned at: " + path, "green")
+            self._log("Skipping clone.", "green")
+            self._set_status("ALREADY CLONED", GREEN)
+            return
+
+        # If the default path's parent doesn't exist or user wants to pick, ask
+        parent = os.path.dirname(path) if path else ""
+        if not path or not os.path.isdir(parent):
+            chosen = filedialog.askdirectory(
+                title="Pick a folder to clone CyberVault2 into"
+            )
+            if not chosen:
+                self._log("Clone cancelled.", "yellow")
+                return
+            path = os.path.join(chosen, REPO_NAME)
+            self.repo_path.set(path)
+
+        def task():
+            # Double-check after user picked
             if os.path.isdir(os.path.join(path, ".git")):
-                self._log("Repo already cloned. Skipping.", "green")
+                self._log("Repo already exists at: " + path, "green")
                 self._set_status("ALREADY CLONED", GREEN)
                 return
 
-            parent = os.path.dirname(path)
-            if parent and not os.path.isdir(parent):
-                os.makedirs(parent, exist_ok=True)
+            parent_dir = os.path.dirname(path)
+            if parent_dir and not os.path.isdir(parent_dir):
+                os.makedirs(parent_dir, exist_ok=True)
 
             self._set_status("CLONING...", CYAN)
             self._log("═" * 50, "cyan")
-            self._log("CLONING REPOSITORY...", "cyan")
+            self._log(f"CLONING INTO: {path}", "cyan")
 
             ret, _ = self._run_cmd(["git", "clone", REPO_URL, path])
             if ret == 0:
@@ -430,10 +452,12 @@ class CyberVaultLauncher:
     def run(self):
         self._log("◆ CyberVault Launcher initialized", "cyan")
         self._log(f"  Repo URL: {REPO_URL}", "cyan")
-        if self.repo_path.get():
-            self._log(f"  Found repo: {self.repo_path.get()}", "green")
+        path = self.repo_path.get()
+        if path and os.path.isdir(os.path.join(path, ".git")):
+            self._log(f"  Repo found: {path}", "green")
         else:
-            self._log("  Repo not found — set path and click CLONE", "yellow")
+            self._log(f"  Default path: {path}", "yellow")
+            self._log("  Repo not cloned yet — click CLONE REPO to get started", "yellow")
         self._log("═" * 50, "cyan")
         self.root.mainloop()
 
