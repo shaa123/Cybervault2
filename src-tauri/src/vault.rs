@@ -494,6 +494,39 @@ impl VaultManager {
         fs::read_to_string(&entry.hidden_path).map_err(|e| e.to_string())
     }
 
+    pub fn debug_info(&self) -> String {
+        let vault_exists = self.vault_root.exists();
+        let index_exists = self.index_path.exists();
+        let entry_count = self.index.entries.len();
+        let mut info = format!(
+            "vault_root: {}\nvault_exists: {}\nindex_path: {}\nindex_exists: {}\nentry_count: {}\n",
+            self.vault_root.display(), vault_exists,
+            self.index_path.display(), index_exists,
+            entry_count
+        );
+        // Check if we can write to vault_root
+        let test_file = self.vault_root.join(".write_test");
+        match fs::write(&test_file, b"test") {
+            Ok(_) => {
+                let _ = fs::remove_file(&test_file);
+                info.push_str("write_test: OK\n");
+            }
+            Err(e) => {
+                info.push_str(&format!("write_test: FAILED ({})\n", e));
+            }
+        }
+        // List first 3 entries
+        for (i, (id, entry)) in self.index.entries.iter().enumerate() {
+            if i >= 3 { break; }
+            let hidden_exists = Path::new(&entry.hidden_path).exists();
+            info.push_str(&format!(
+                "entry[{}]: {} -> {} (exists: {})\n",
+                id, entry.original_name, entry.hidden_path, hidden_exists
+            ));
+        }
+        info
+    }
+
     fn cleanup_empty_dirs(&self, file_path: &str) {
         let mut dir = Path::new(file_path).parent().map(|p| p.to_path_buf());
         while let Some(d) = dir {

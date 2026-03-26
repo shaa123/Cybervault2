@@ -125,6 +125,12 @@ fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> Result<(), Str
     Ok(())
 }
 
+#[tauri::command]
+fn debug_info(state: State<AppState>) -> Result<String, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.debug_info())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let vault = VaultManager::new().expect("Failed to initialize vault");
@@ -151,6 +157,7 @@ pub fn run() {
             set_files_tag,
             list_tags,
             delete_files,
+            debug_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
