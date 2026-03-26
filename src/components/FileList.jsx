@@ -30,9 +30,7 @@ function Thumbnail({ file }) {
     if (file.mime_hint === "image") {
       invoke("get_file_preview", { fileId: file.id })
         .then((b64) => {
-          if (!cancelled) {
-            setSrc(`data:${getMime(file.original_name)};base64,${b64}`);
-          }
+          if (!cancelled) setSrc(`data:${getMime(file.original_name)};base64,${b64}`);
         })
         .catch(() => {});
     }
@@ -40,11 +38,12 @@ function Thumbnail({ file }) {
   }, [file.id, file.mime_hint, file.original_name]);
 
   if (src) return <img src={src} alt="" />;
-  return ICONS[file.mime_hint] || "◧";
+  return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
 }
 
 export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
   const [loading, setLoading] = useState(false);
+  const isGridView = category === "image" || category === "video";
 
   const handleAdd = async () => {
     try {
@@ -61,19 +60,21 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     } catch (e) { console.error(e); setLoading(false); }
   };
 
-  const handleUnhide = async (id) => {
+  const handleUnhide = async (e, id) => {
+    e.stopPropagation();
     try {
       const dest = await openDialog({ directory: true });
       if (dest) {
         await invoke("unhide_file", { fileId: id, destination: dest.path || dest });
         onChanged();
       }
-    } catch (e) { console.error(e); }
+    } catch (err) { console.error(err); }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
     try { await invoke("delete_file", { fileId: id }); onChanged(); }
-    catch (e) { console.error(e); }
+    catch (err) { console.error(err); }
   };
 
   const handleRestore = async (id) => {
@@ -119,17 +120,40 @@ export default function FileList({ category, files, color, onChanged, onEditNote
               : "Deleted files appear here"}
           </div>
         </div>
+      ) : isGridView ? (
+        /* ── 5x5 GRID for images & videos ── */
+        <div className="grid-wrap">
+          <div className="grid-tiles">
+            {files.map((f) => (
+              <button
+                key={f.id}
+                className="grid-tile"
+                onClick={() => onViewMedia(f)}
+              >
+                <div className="grid-tile-thumb">
+                  <Thumbnail file={f} />
+                  {f.mime_hint === "video" && (
+                    <div className="grid-tile-play">▶</div>
+                  )}
+                </div>
+                <div className="grid-tile-info">
+                  <div className="grid-tile-name">{f.original_name}</div>
+                  <div className="grid-tile-meta">{formatSize(f.size)}</div>
+                </div>
+                <div className="grid-tile-actions">
+                  <span className="fl-row-btn reveal" onClick={(e) => handleUnhide(e, f.id)}>UNHIDE</span>
+                  <span className="fl-row-btn del" onClick={(e) => handleDelete(e, f.id)}>DEL</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : (
+        /* ── LIST for docs, notes, trash ── */
         <div className="fl-rows">
           {files.map((f) => (
-            <div
-              key={f.id}
-              className={`fl-row ${isMedia(f) ? "clickable" : ""}`}
-              onClick={() => isMedia(f) && onViewMedia(f)}
-            >
-              <div className="fl-row-icon">
-                {category !== "trash" ? <Thumbnail file={f} /> : (ICONS[f.mime_hint] || "◧")}
-              </div>
+            <div key={f.id} className="fl-row">
+              <div className="fl-row-icon">{ICONS[f.mime_hint] || "◧"}</div>
               <div className="fl-row-info">
                 <div className="fl-row-name">{f.original_name}</div>
                 <div className="fl-row-meta">{formatSize(f.size)} · {f.hidden_at}</div>
@@ -139,14 +163,11 @@ export default function FileList({ category, files, color, onChanged, onEditNote
                   <button className="fl-row-btn restore" onClick={() => handleRestore(f.id)}>RESTORE</button>
                 ) : (
                   <>
-                    {isMedia(f) && (
-                      <button className="fl-row-btn view" onClick={() => onViewMedia(f)}>VIEW</button>
-                    )}
                     {category === "note" && (
                       <button className="fl-row-btn edit" onClick={() => onEditNote(f)}>EDIT</button>
                     )}
-                    <button className="fl-row-btn reveal" onClick={() => handleUnhide(f.id)}>UNHIDE</button>
-                    <button className="fl-row-btn del" onClick={() => handleDelete(f.id)}>DEL</button>
+                    <button className="fl-row-btn reveal" onClick={(e) => handleUnhide(e, f.id)}>UNHIDE</button>
+                    <button className="fl-row-btn del" onClick={(e) => handleDelete(e, f.id)}>DEL</button>
                   </>
                 )}
               </div>

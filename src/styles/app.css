@@ -322,6 +322,108 @@
   flex-shrink: 0;
 }
 
+/* ─── 5x5 MEDIA GRID ────────────────────────── */
+
+.grid-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px 14px;
+}
+
+.grid-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.grid-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.grid-tile:hover {
+  border-color: var(--list-color, var(--cyan));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--list-color, var(--cyan)) 12%, transparent);
+}
+
+.grid-tile:hover .grid-tile-actions { opacity: 1; }
+
+.grid-tile-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--surface2);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.grid-tile-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.grid-tile-icon {
+  font-size: 1.8rem;
+  color: var(--list-color, var(--cyan));
+  text-shadow: 0 0 10px var(--list-color, var(--cyan));
+}
+
+.grid-tile-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.6rem;
+  color: white;
+  background: rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 12px rgba(0, 0, 0, 0.8);
+  transition: background 0.15s;
+}
+
+.grid-tile:hover .grid-tile-play {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.grid-tile-info {
+  padding: 8px 10px;
+}
+
+.grid-tile-name {
+  font-size: 0.7rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid-tile-meta {
+  font-size: 0.6rem;
+  color: var(--text4);
+  margin-top: 2px;
+}
+
+.grid-tile-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+
+/* ─── FILE LIST ROWS ────────────────────────── */
+
 .fl-rows {
   flex: 1;
   overflow-y: auto;
