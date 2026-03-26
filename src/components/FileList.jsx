@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -24,32 +24,80 @@ function getMime(name) {
 
 function Thumbnail({ file }) {
   const [src, setSrc] = useState(null);
-
   useEffect(() => {
     let cancelled = false;
     if (file.mime_hint === "image") {
       invoke("get_file_preview", { fileId: file.id })
-        .then((b64) => {
-          if (!cancelled) setSrc(`data:${getMime(file.original_name)};base64,${b64}`);
-        })
+        .then((b64) => { if (!cancelled) setSrc(`data:${getMime(file.original_name)};base64,${b64}`); })
         .catch(() => {});
     }
     return () => { cancelled = true; };
   }, [file.id, file.mime_hint, file.original_name]);
-
   if (src) return <img src={src} alt="" />;
   return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
 }
 
 export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
   const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [tags, setTags] = useState([]);
+  const [activeTag, setActiveTag] = useState(""); // "" = all
+  const [newTag, setNewTag] = useState("");
+  const [showTagInput, setShowTagInput] = useState(false);
+  const tagInputRef = useRef(null);
   const isGridView = category === "image" || category === "video";
+
+  // Load tags for this category
+  useEffect(() => {
+    if (category === "image" || category === "video") {
+      invoke("list_tags", { category }).then(setTags).catch(() => setTags([]));
+    } else {
+      setTags([]);
+    }
+    setActiveTag("");
+    setSelected(new Set());
+  }, [category, files]);
+
+  // Filter files by tag
+  const filteredFiles = activeTag
+    ? files.filter(f => f.tag === activeTag)
+    : files;
+
+  // Ctrl+A handler
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "a" && isGridView) {
+        e.preventDefault();
+        if (selected.size === filteredFiles.length) {
+          setSelected(new Set());
+        } else {
+          setSelected(new Set(filteredFiles.map(f => f.id)));
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isGridView, filteredFiles, selected]);
+
+  // Focus tag input when shown
+  useEffect(() => {
+    if (showTagInput && tagInputRef.current) tagInputRef.current.focus();
+  }, [showTagInput]);
+
+  const toggleSelect = (e, id) => {
+    e.stopPropagation();
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleAdd = async () => {
     try {
-      const selected = await openDialog({ multiple: true });
-      if (selected) {
-        const paths = (Array.isArray(selected) ? selected : [selected]).map(f => f.path || f);
+      const sel = await openDialog({ multiple: true });
+      if (sel) {
+        const paths = (Array.isArray(sel) ? sel : [sel]).map(f => f.path || f);
         if (paths.length > 0) {
           setLoading(true);
           await invoke("hide_files", { paths, category });
@@ -87,10 +135,43 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     catch (e) { console.error(e); }
   };
 
-  const isMedia = (f) => f.mime_hint === "image" || f.mime_hint === "video";
+  // Batch actions for selected
+  const handleBatchDelete = async () => {
+    if (selected.size === 0) return;
+    try {
+      await invoke("delete_files", { fileIds: [...selected] });
+      setSelected(new Set());
+      onChanged();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleBatchTag = async (tag) => {
+    if (selected.size === 0) return;
+    try {
+      await invoke("set_files_tag", { fileIds: [...selected], tag });
+      setSelected(new Set());
+      setShowTagInput(false);
+      setNewTag("");
+      onChanged();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleCreateTag = () => {
+    const t = newTag.trim();
+    if (t) handleBatchTag(t);
+  };
+
+  const handleSingleTag = async (e, fileId, tag) => {
+    e.stopPropagation();
+    try {
+      await invoke("set_file_tag", { fileId, tag });
+      onChanged();
+    } catch (err) { console.error(err); }
+  };
 
   return (
     <div className="filelist" style={{ "--list-color": color }}>
+      {/* Toolbar */}
       <div className="fl-toolbar">
         <div className="fl-title">{TITLES[category]}</div>
         {category === "note" && (
@@ -106,30 +187,95 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         )}
       </div>
 
-      <div className="fl-count">{files.length} FILE{files.length !== 1 ? "S" : ""}</div>
+      {/* Tag filter bar for image/video */}
+      {isGridView && (tags.length > 0 || files.length > 0) && (
+        <div className="tag-bar">
+          <button
+            className={`tag-chip ${activeTag === "" ? "active" : ""}`}
+            onClick={() => setActiveTag("")}
+          >ALL ({files.length})</button>
+          {tags.map(t => (
+            <button
+              key={t}
+              className={`tag-chip ${activeTag === t ? "active" : ""}`}
+              onClick={() => setActiveTag(t)}
+            >{t} ({files.filter(f => f.tag === t).length})</button>
+          ))}
+          {files.some(f => !f.tag) && tags.length > 0 && (
+            <button
+              className={`tag-chip ${activeTag === "__untagged" ? "active" : ""}`}
+              onClick={() => setActiveTag("__untagged")}
+            >UNSORTED ({files.filter(f => !f.tag).length})</button>
+          )}
+        </div>
+      )}
 
-      {files.length === 0 ? (
+      {/* Selection bar */}
+      {selected.size > 0 && (
+        <div className="select-bar">
+          <span className="select-count">{selected.size} SELECTED</span>
+          <button className="fl-btn fl-btn-primary" onClick={() => setShowTagInput(!showTagInput)}>
+            TAG
+          </button>
+          <button className="fl-btn fl-btn-danger" onClick={handleBatchDelete}>DELETE</button>
+          <button className="fl-btn fl-btn-muted" onClick={() => setSelected(new Set())}>CANCEL</button>
+          {showTagInput && (
+            <div className="select-tag-input">
+              <input
+                ref={tagInputRef}
+                className="tag-input"
+                placeholder="New category name..."
+                value={newTag}
+                onChange={e => setNewTag(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleCreateTag(); if (e.key === "Escape") setShowTagInput(false); }}
+              />
+              <button className="fl-btn fl-btn-primary" onClick={handleCreateTag}>APPLY</button>
+              {tags.map(t => (
+                <button key={t} className="tag-chip small" onClick={() => handleBatchTag(t)}>{t}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="fl-count">
+        {filteredFiles.length} FILE{filteredFiles.length !== 1 ? "S" : ""}
+        {isGridView && <span className="fl-hint"> · CTRL+A SELECT ALL</span>}
+      </div>
+
+      {filteredFiles.length === 0 ? (
         <div className="fl-empty">
           <div className="fl-empty-icon">◇</div>
           <div className="fl-empty-text">
-            {category === "trash" ? "TRASH EMPTY" : "NO FILES YET"}
+            {activeTag ? "NO FILES IN THIS CATEGORY" : category === "trash" ? "TRASH EMPTY" : "NO FILES YET"}
           </div>
           <div className="fl-empty-sub">
-            {category === "note" ? "Create a note to get started"
+            {activeTag ? "Try selecting a different category or 'ALL'"
+              : category === "note" ? "Create a note to get started"
               : category !== "trash" ? "Click + HIDE FILES to add files"
               : "Deleted files appear here"}
           </div>
         </div>
       ) : isGridView ? (
-        /* ── 5x5 GRID for images & videos ── */
         <div className="grid-wrap">
           <div className="grid-tiles">
-            {files.map((f) => (
+            {(activeTag === "__untagged" ? files.filter(f => !f.tag) : filteredFiles).map((f) => (
               <button
                 key={f.id}
-                className="grid-tile"
-                onClick={() => onViewMedia(f)}
+                className={`grid-tile ${selected.has(f.id) ? "selected" : ""}`}
+                onClick={() => {
+                  if (selected.size > 0) {
+                    toggleSelect({ stopPropagation: () => {} }, f.id);
+                  } else {
+                    onViewMedia(f);
+                  }
+                }}
               >
+                <div className="grid-tile-select" onClick={(e) => toggleSelect(e, f.id)}>
+                  <div className={`grid-tile-checkbox ${selected.has(f.id) ? "checked" : ""}`}>
+                    {selected.has(f.id) && "✓"}
+                  </div>
+                </div>
                 <div className="grid-tile-thumb">
                   <Thumbnail file={f} />
                   {f.mime_hint === "video" && (
@@ -138,7 +284,10 @@ export default function FileList({ category, files, color, onChanged, onEditNote
                 </div>
                 <div className="grid-tile-info">
                   <div className="grid-tile-name">{f.original_name}</div>
-                  <div className="grid-tile-meta">{formatSize(f.size)}</div>
+                  <div className="grid-tile-meta">
+                    {formatSize(f.size)}
+                    {f.tag && <span className="grid-tile-tag">{f.tag}</span>}
+                  </div>
                 </div>
                 <div className="grid-tile-actions">
                   <span className="fl-row-btn reveal" onClick={(e) => handleUnhide(e, f.id)}>UNHIDE</span>
@@ -149,9 +298,8 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           </div>
         </div>
       ) : (
-        /* ── LIST for docs, notes, trash ── */
         <div className="fl-rows">
-          {files.map((f) => (
+          {filteredFiles.map((f) => (
             <div key={f.id} className="fl-row">
               <div className="fl-row-icon">{ICONS[f.mime_hint] || "◧"}</div>
               <div className="fl-row-info">

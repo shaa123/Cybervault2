@@ -17,6 +17,8 @@ struct VaultFile {
     size: u64,
     hidden_at: String,
     mime_hint: String,
+    #[serde(default)]
+    tag: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -96,6 +98,33 @@ fn read_note(state: State<AppState>, file_id: String) -> Result<String, String> 
     vault.read_note(&file_id)
 }
 
+#[tauri::command]
+fn set_file_tag(state: State<AppState>, file_id: String, tag: String) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.set_file_tag(&file_id, &tag)
+}
+
+#[tauri::command]
+fn set_files_tag(state: State<AppState>, file_ids: Vec<String>, tag: String) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.set_files_tag(&file_ids, &tag)
+}
+
+#[tauri::command]
+fn list_tags(state: State<AppState>, category: String) -> Result<Vec<String>, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.list_tags(&category))
+}
+
+#[tauri::command]
+fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    for id in file_ids {
+        vault.move_to_trash(&id)?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let vault = VaultManager::new().expect("Failed to initialize vault");
@@ -118,6 +147,10 @@ pub fn run() {
             get_file_preview,
             save_note,
             read_note,
+            set_file_tag,
+            set_files_tag,
+            list_tags,
+            delete_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

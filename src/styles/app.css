@@ -322,6 +322,104 @@
   flex-shrink: 0;
 }
 
+/* ─── TAG FILTER BAR ────────────────────────── */
+
+.tag-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tag-chip {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text3);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  transition: all 0.12s;
+}
+
+.tag-chip:hover {
+  color: var(--text2);
+  border-color: var(--border-light);
+}
+
+.tag-chip.active {
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--cyan);
+  border-color: rgba(0, 229, 255, 0.3);
+}
+
+.tag-chip.small {
+  padding: 3px 8px;
+  font-size: 0.65rem;
+}
+
+/* ─── SELECTION BAR ─────────────────────────── */
+
+.select-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.select-count {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cyan);
+  letter-spacing: 1px;
+  margin-right: 4px;
+}
+
+.fl-btn-muted {
+  background: var(--surface2);
+  color: var(--text3);
+  border: 1px solid var(--border);
+}
+
+.fl-btn-muted:hover { color: var(--text); border-color: var(--border-light); }
+
+.select-tag-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+  margin-top: 6px;
+}
+
+.tag-input {
+  flex: 1;
+  max-width: 250px;
+  padding: 6px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.8rem;
+  transition: border-color 0.12s;
+}
+
+.tag-input:focus { border-color: var(--cyan); }
+.tag-input::placeholder { color: var(--text4); }
+
+.fl-hint {
+  color: var(--text4);
+  font-size: 0.65rem;
+}
+
 /* ─── 5x5 MEDIA GRID ────────────────────────── */
 
 .grid-wrap {
@@ -353,7 +451,54 @@
   box-shadow: 0 0 16px color-mix(in srgb, var(--list-color, var(--cyan)) 12%, transparent);
 }
 
+.grid-tile.selected {
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.15);
+}
+
 .grid-tile:hover .grid-tile-actions { opacity: 1; }
+.grid-tile:hover .grid-tile-select { opacity: 1; }
+
+.grid-tile-select {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.grid-tile.selected .grid-tile-select { opacity: 1; }
+
+.grid-tile-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--text3);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: var(--bg);
+  backdrop-filter: blur(4px);
+  transition: all 0.12s;
+}
+
+.grid-tile-checkbox.checked {
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.grid-tile-tag {
+  display: inline-block;
+  font-size: 0.55rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--cyan);
+  margin-left: 4px;
+  letter-spacing: 0.5px;
+}
 
 .grid-tile-thumb {
   position: relative;

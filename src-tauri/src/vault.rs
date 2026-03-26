@@ -35,6 +35,8 @@ struct VaultEntry {
     hidden_path: String,
     mime_hint: String,
     original_category: Option<String>,
+    #[serde(default)]
+    tag: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -249,6 +251,7 @@ impl VaultManager {
             hidden_path: hidden_path.to_string_lossy().to_string(),
             mime_hint: mime_hint.clone(),
             original_category: None,
+            tag: String::new(),
         };
 
         self.index.entries.insert(id.clone(), entry);
@@ -261,6 +264,7 @@ impl VaultManager {
             size,
             hidden_at: now,
             mime_hint,
+            tag: String::new(),
         })
     }
 
@@ -282,8 +286,36 @@ impl VaultManager {
                 size: e.size,
                 hidden_at: e.hidden_at.clone(),
                 mime_hint: e.mime_hint.clone(),
+                tag: e.tag.clone(),
             })
             .collect()
+    }
+
+    pub fn set_file_tag(&mut self, file_id: &str, tag: &str) -> Result<(), String> {
+        let entry = self.index.entries.get_mut(file_id)
+            .ok_or("File not found in vault")?;
+        entry.tag = tag.to_string();
+        self.save_index()
+    }
+
+    pub fn set_files_tag(&mut self, file_ids: &[String], tag: &str) -> Result<(), String> {
+        for id in file_ids {
+            if let Some(entry) = self.index.entries.get_mut(id.as_str()) {
+                entry.tag = tag.to_string();
+            }
+        }
+        self.save_index()
+    }
+
+    pub fn list_tags(&self, category: &str) -> Vec<String> {
+        let mut tags: Vec<String> = self.index.entries.values()
+            .filter(|e| e.category == category && !e.tag.is_empty())
+            .map(|e| e.tag.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        tags.sort();
+        tags
     }
 
     pub fn unhide_file(&mut self, file_id: &str, destination: &str) -> Result<(), String> {
@@ -408,6 +440,7 @@ impl VaultManager {
             hidden_path: hidden_path.to_string_lossy().to_string(),
             mime_hint: "text".to_string(),
             original_category: None,
+            tag: String::new(),
         };
 
         self.index.entries.insert(id.clone(), entry);
@@ -420,6 +453,7 @@ impl VaultManager {
             size,
             hidden_at: now,
             mime_hint: "text".to_string(),
+            tag: String::new(),
         })
     }
 
