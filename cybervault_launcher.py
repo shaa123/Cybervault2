@@ -194,7 +194,7 @@ class CyberVaultLauncher:
         grid.columnconfigure((0, 1, 2), weight=1)
 
         buttons = [
-            ("⬡  CLONE REPO",        CYAN,    self._clone_repo,      0, 0),
+            ("⬡  CLONE / PULL",      CYAN,    self._clone_repo,      0, 0),
             ("⚡  MERGE BRANCHES",    MAGENTA, self._merge_branches,  0, 1),
             ("◧  INSTALL DEPS",      YELLOW,  self._install_deps,    0, 2),
             ("▶  RUN DEV",           GREEN,   self._run_dev,         1, 0),
@@ -355,34 +355,47 @@ class CyberVaultLauncher:
                 self.running = False
         threading.Thread(target=wrapper, daemon=True).start()
 
-    # ── Clone ──────────────────────────────────────────
+    # ── Clone / Pull ─────────────────────────────────
     def _clone_repo(self):
-        # _require_path on main thread (no need_repo — we're about to clone)
+        # _require_path on main thread (no need_repo — we might be cloning)
         path = self._require_path(need_repo=False)
         if not path:
             return
 
-        if os.path.isdir(os.path.join(path, ".git")):
-            self._log("Repo already cloned at: " + path, "green")
-            self._set_status("ALREADY CLONED", GREEN)
-            return
+        already_cloned = os.path.isdir(os.path.join(path, ".git"))
 
         def task():
-            parent_dir = os.path.dirname(path)
-            if parent_dir and not os.path.isdir(parent_dir):
-                os.makedirs(parent_dir, exist_ok=True)
+            if already_cloned:
+                # Repo exists — pull latest
+                self.root.after(0, self._set_status, "PULLING...", CYAN)
+                self.root.after(0, self._log, "═" * 50, "cyan")
+                self.root.after(0, self._log, f"PULLING LATEST FROM: {path}", "cyan")
 
-            self.root.after(0, self._set_status, "CLONING...", CYAN)
-            self.root.after(0, self._log, "═" * 50, "cyan")
-            self.root.after(0, self._log, f"CLONING INTO: {path}", "cyan")
-
-            ret, _ = self._run_cmd([GIT, "clone", REPO_URL, path])
-            if ret == 0:
-                self.root.after(0, self._log, "Clone complete!", "green")
-                self.root.after(0, self._set_status, "CLONED", GREEN)
+                self._run_cmd([GIT, "checkout", "main"], cwd=path)
+                ret, _ = self._run_cmd([GIT, "pull", "origin", "main"], cwd=path)
+                if ret == 0:
+                    self.root.after(0, self._log, "Pull complete! You have the latest code.", "green")
+                    self.root.after(0, self._set_status, "UP TO DATE", GREEN)
+                else:
+                    self.root.after(0, self._log, "Pull failed!", "red")
+                    self.root.after(0, self._set_status, "PULL FAILED", RED)
             else:
-                self.root.after(0, self._log, "Clone failed!", "red")
-                self.root.after(0, self._set_status, "CLONE FAILED", RED)
+                # Repo doesn't exist — clone it
+                parent_dir = os.path.dirname(path)
+                if parent_dir and not os.path.isdir(parent_dir):
+                    os.makedirs(parent_dir, exist_ok=True)
+
+                self.root.after(0, self._set_status, "CLONING...", CYAN)
+                self.root.after(0, self._log, "═" * 50, "cyan")
+                self.root.after(0, self._log, f"CLONING INTO: {path}", "cyan")
+
+                ret, _ = self._run_cmd([GIT, "clone", REPO_URL, path])
+                if ret == 0:
+                    self.root.after(0, self._log, "Clone complete!", "green")
+                    self.root.after(0, self._set_status, "CLONED", GREEN)
+                else:
+                    self.root.after(0, self._log, "Clone failed!", "red")
+                    self.root.after(0, self._set_status, "CLONE FAILED", RED)
 
         self._threaded(task)
 
