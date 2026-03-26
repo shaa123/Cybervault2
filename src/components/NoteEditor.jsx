@@ -10,7 +10,7 @@ export default function NoteEditor({ note, onSave, onBack }) {
     if (note) {
       setTitle(note.original_name.replace(/\.txt$/, ""));
       invoke("read_note", { fileId: note.id })
-        .then((text) => setContent(text))
+        .then(setContent)
         .catch(() => setContent(""));
     } else {
       setTitle("");
@@ -22,7 +22,6 @@ export default function NoteEditor({ note, onSave, onBack }) {
     if (!title.trim()) return;
     setSaving(true);
     try {
-      // If editing existing note, delete old one first
       if (note) {
         await invoke("delete_file", { fileId: note.id });
         await invoke("purge_trash");
@@ -30,35 +29,30 @@ export default function NoteEditor({ note, onSave, onBack }) {
       await invoke("save_note", { title: title.trim(), content });
       onSave();
       onBack();
-    } catch (e) {
-      console.error("Failed to save note:", e);
-    }
+    } catch (e) { console.error(e); }
     setSaving(false);
   };
 
   return (
-    <div className="cv-note-editor">
-      <div className="cv-ne-header">
-        <button className="cv-fl-back" onClick={onBack}>
-          &#x25C0; BACK
-        </button>
-        <h2 className="cv-ne-title">{note ? "EDIT_NOTE" : "NEW_NOTE"}</h2>
-        <button className="cv-fl-btn cv-btn-add" onClick={handleSave} disabled={saving}>
+    <div className="note-editor">
+      <div className="ne-toolbar">
+        <button className="fl-btn fl-btn-primary" onClick={onBack}>← BACK</button>
+        <div className="ne-title">{note ? "EDIT NOTE" : "NEW NOTE"}</div>
+        <button className="fl-btn fl-btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? "SAVING..." : "SAVE"}
         </button>
       </div>
-      <div className="cv-ne-body">
+      <div className="ne-body">
         <input
-          className="cv-ne-input"
-          type="text"
-          placeholder="NOTE TITLE..."
+          className="ne-input"
+          placeholder="Note title..."
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
         <textarea
-          className="cv-ne-textarea"
-          placeholder="Enter your note content here..."
+          className="ne-textarea"
+          placeholder="Write your note here..."
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />

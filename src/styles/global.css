@@ -13,74 +13,43 @@
 }
 
 :root {
-  --cv-bg: #0a0a0f;
-  --cv-bg2: #0d0d15;
-  --cv-surface: #12121c;
-  --cv-surface2: #181826;
-  --cv-border: #1e1e35;
-  --cv-border-glow: #00f0ff22;
-  --cv-cyan: #00f0ff;
-  --cv-magenta: #ff00e5;
-  --cv-yellow: #ffe600;
-  --cv-green: #00ff8c;
-  --cv-red: #ff3344;
-  --cv-purple: #8855ff;
-  --cv-orange: #ff8800;
-  --cv-text: #e0e0f0;
-  --cv-text-dim: #6a6a8a;
-  --cv-text-muted: #3a3a55;
-  --cv-font: 'Corptic', 'Rajdhani', 'Share Tech Mono', 'Consolas', monospace;
+  --bg: #08080c;
+  --bg2: #0c0c12;
+  --surface: #111118;
+  --surface2: #16161f;
+  --surface3: #1c1c28;
+  --border: #1a1a2e;
+  --border-light: #252540;
+  --cyan: #00e5ff;
+  --magenta: #e040fb;
+  --yellow: #ffd740;
+  --green: #69f0ae;
+  --red: #ff5252;
+  --purple: #7c4dff;
+  --text: #e8e8f0;
+  --text2: #a0a0b8;
+  --text3: #5a5a72;
+  --text4: #35354a;
+  --font: 'Corptic', 'Segoe UI', 'Inter', system-ui, sans-serif;
+  --mono: 'Corptic', 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
-  font-family: var(--cv-font);
-  color: var(--cv-text);
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
-body {
-  background: var(--cv-bg);
-}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
+::selection { background: var(--cyan); color: var(--bg); }
 
-::-webkit-scrollbar-track {
-  background: var(--cv-bg2);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--cv-border);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--cv-cyan);
-}
-
-::selection {
-  background: var(--cv-cyan);
-  color: var(--cv-bg);
-}
-
-button {
-  font-family: var(--cv-font);
-  cursor: pointer;
-  border: none;
-  outline: none;
-  background: none;
-  color: inherit;
-}
-
-input, textarea {
-  font-family: var(--cv-font);
-  outline: none;
-  border: none;
-  background: none;
-  color: inherit;
-}
+button { font-family: var(--font); cursor: pointer; border: none; outline: none; background: none; color: inherit; }
+input, textarea { font-family: var(--mono); outline: none; border: none; background: none; color: inherit; }

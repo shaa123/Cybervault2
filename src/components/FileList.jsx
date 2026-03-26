@@ -2,173 +2,111 @@ import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
-const CATEGORY_TITLES = {
-  image: "IMAGE_ARCHIVE",
-  video: "VIDEO_ARCHIVE",
-  document: "DOCUMENT_ARCHIVE",
-  note: "NOTE_ARCHIVE",
-  trash: "TRASH_BIN",
-};
-
-const CATEGORY_COLORS = {
-  image: "#00f0ff",
-  video: "#ff00e5",
-  document: "#ffe600",
-  note: "#00ff8c",
-  trash: "#ff3344",
-};
+const TITLES = { image: "IMAGES", video: "VIDEOS", document: "DOCUMENTS", note: "NOTES", trash: "TRASH" };
+const ICONS = { image: "◈", video: "▶", text: "✎", document: "◧" };
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB";
+  return (bytes / 1073741824).toFixed(2) + " GB";
 }
 
-export default function FileList({ category, files, onFilesChanged, onBack, onEditNote }) {
-  const [dragOver, setDragOver] = useState(false);
+export default function FileList({ category, files, color, onChanged, onEditNote }) {
   const [loading, setLoading] = useState(false);
 
-  const handleAddFiles = async () => {
+  const handleAdd = async () => {
     try {
-      const selected = await openDialog({
-        multiple: true,
-        directory: false,
-      });
+      const selected = await openDialog({ multiple: true });
       if (selected) {
-        const paths = Array.isArray(selected) ? selected.map(f => f.path || f) : [selected.path || selected];
+        const paths = (Array.isArray(selected) ? selected : [selected]).map(f => f.path || f);
         if (paths.length > 0) {
           setLoading(true);
           await invoke("hide_files", { paths, category });
-          onFilesChanged();
+          onChanged();
           setLoading(false);
         }
       }
-    } catch (e) {
-      console.error("Failed to add files:", e);
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); setLoading(false); }
   };
 
-  const handleUnhide = async (fileId) => {
+  const handleUnhide = async (id) => {
     try {
-      const selected = await openDialog({
-        directory: true,
-      });
-      if (selected) {
-        const dest = selected.path || selected;
-        await invoke("unhide_file", { fileId, destination: dest });
-        onFilesChanged();
+      const dest = await openDialog({ directory: true });
+      if (dest) {
+        await invoke("unhide_file", { fileId: id, destination: dest.path || dest });
+        onChanged();
       }
-    } catch (e) {
-      console.error("Failed to unhide:", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  const handleDelete = async (fileId) => {
-    try {
-      await invoke("delete_file", { fileId });
-      onFilesChanged();
-    } catch (e) {
-      console.error("Failed to delete:", e);
-    }
+  const handleDelete = async (id) => {
+    try { await invoke("delete_file", { fileId: id }); onChanged(); }
+    catch (e) { console.error(e); }
   };
 
-  const handleRestore = async (fileId) => {
-    try {
-      await invoke("restore_file", { fileId });
-      onFilesChanged();
-    } catch (e) {
-      console.error("Failed to restore:", e);
-    }
+  const handleRestore = async (id) => {
+    try { await invoke("restore_file", { fileId: id }); onChanged(); }
+    catch (e) { console.error(e); }
   };
 
   const handlePurge = async () => {
-    try {
-      await invoke("purge_trash");
-      onFilesChanged();
-    } catch (e) {
-      console.error("Failed to purge:", e);
-    }
+    try { await invoke("purge_trash"); onChanged(); }
+    catch (e) { console.error(e); }
   };
 
-  const accent = CATEGORY_COLORS[category] || "#00f0ff";
-
   return (
-    <div className="cv-filelist" style={{ "--list-accent": accent }}>
-      <div className="cv-fl-header">
-        <button className="cv-fl-back" onClick={onBack}>
-          &#x25C0; BACK
-        </button>
-        <h2 className="cv-fl-title">{CATEGORY_TITLES[category] || "FILES"}</h2>
-        <div className="cv-fl-actions">
-          {category === "note" && (
-            <button className="cv-fl-btn cv-btn-add" onClick={() => onEditNote(null)}>
-              + NEW NOTE
-            </button>
-          )}
-          {category !== "trash" && category !== "note" && (
-            <button className="cv-fl-btn cv-btn-add" onClick={handleAddFiles} disabled={loading}>
-              {loading ? "HIDING..." : "+ HIDE FILES"}
-            </button>
-          )}
-          {category === "trash" && files.length > 0 && (
-            <button className="cv-fl-btn cv-btn-purge" onClick={handlePurge}>
-              ⌫ PURGE ALL
-            </button>
-          )}
-        </div>
+    <div className="filelist" style={{ "--list-color": color }}>
+      <div className="fl-toolbar">
+        <div className="fl-title">{TITLES[category]}</div>
+        {category === "note" && (
+          <button className="fl-btn fl-btn-primary" onClick={() => onEditNote(null)}>+ NEW NOTE</button>
+        )}
+        {category !== "trash" && category !== "note" && (
+          <button className="fl-btn fl-btn-primary" onClick={handleAdd} disabled={loading}>
+            {loading ? "HIDING..." : "+ HIDE FILES"}
+          </button>
+        )}
+        {category === "trash" && files.length > 0 && (
+          <button className="fl-btn fl-btn-danger" onClick={handlePurge}>PURGE ALL</button>
+        )}
       </div>
 
-      <div className="cv-fl-count">{files.length} FILE{files.length !== 1 ? "S" : ""} HIDDEN</div>
+      <div className="fl-count">{files.length} FILE{files.length !== 1 ? "S" : ""}</div>
 
       {files.length === 0 ? (
-        <div className="cv-fl-empty">
-          <div className="cv-fl-empty-icon">◇</div>
-          <div className="cv-fl-empty-text">
-            {category === "trash" ? "TRASH IS EMPTY" : "NO FILES HIDDEN YET"}
+        <div className="fl-empty">
+          <div className="fl-empty-icon">◇</div>
+          <div className="fl-empty-text">
+            {category === "trash" ? "TRASH EMPTY" : "NO FILES YET"}
           </div>
-          <div className="cv-fl-empty-sub">
-            {category === "note"
-              ? "Create a new note to get started"
-              : category !== "trash"
-              ? "Click HIDE FILES to add files to this vault"
-              : "Deleted files will appear here"}
+          <div className="fl-empty-sub">
+            {category === "note" ? "Create a note to get started"
+              : category !== "trash" ? "Click + HIDE FILES to add files"
+              : "Deleted files appear here"}
           </div>
         </div>
       ) : (
-        <div className="cv-fl-list">
-          {files.map((file) => (
-            <div key={file.id} className="cv-fl-item">
-              <div className="cv-fl-item-icon">
-                {file.mime_hint === "image" ? "◈" :
-                 file.mime_hint === "video" ? "▶" :
-                 file.mime_hint === "text" ? "✎" : "◧"}
+        <div className="fl-rows">
+          {files.map((f) => (
+            <div key={f.id} className="fl-row">
+              <div className="fl-row-icon">
+                {ICONS[f.mime_hint] || "◧"}
               </div>
-              <div className="cv-fl-item-info">
-                <div className="cv-fl-item-name">{file.original_name}</div>
-                <div className="cv-fl-item-meta">
-                  {formatSize(file.size)} • {file.hidden_at}
-                </div>
+              <div className="fl-row-info">
+                <div className="fl-row-name">{f.original_name}</div>
+                <div className="fl-row-meta">{formatSize(f.size)} · {f.hidden_at}</div>
               </div>
-              <div className="cv-fl-item-actions">
+              <div className="fl-row-actions">
                 {category === "trash" ? (
-                  <button className="cv-fl-ibtn cv-ibtn-restore" onClick={() => handleRestore(file.id)}>
-                    RESTORE
-                  </button>
+                  <button className="fl-row-btn restore" onClick={() => handleRestore(f.id)}>RESTORE</button>
                 ) : (
                   <>
                     {category === "note" && (
-                      <button className="cv-fl-ibtn cv-ibtn-edit" onClick={() => onEditNote(file)}>
-                        EDIT
-                      </button>
+                      <button className="fl-row-btn edit" onClick={() => onEditNote(f)}>EDIT</button>
                     )}
-                    <button className="cv-fl-ibtn cv-ibtn-unhide" onClick={() => handleUnhide(file.id)}>
-                      UNHIDE
-                    </button>
-                    <button className="cv-fl-ibtn cv-ibtn-del" onClick={() => handleDelete(file.id)}>
-                      DEL
-                    </button>
+                    <button className="fl-row-btn reveal" onClick={() => handleUnhide(f.id)}>UNHIDE</button>
+                    <button className="fl-row-btn del" onClick={() => handleDelete(f.id)}>DEL</button>
                   </>
                 )}
               </div>

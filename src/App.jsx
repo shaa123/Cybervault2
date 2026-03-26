@@ -1,33 +1,34 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
-import Sidebar from "./components/Sidebar";
-import VaultGrid from "./components/VaultGrid";
+import NavTabs from "./components/NavTabs";
+import Dashboard from "./components/Dashboard";
 import FileList from "./components/FileList";
 import NoteEditor from "./components/NoteEditor";
 import "./styles/app.css";
 
-const CATEGORIES = [
-  { id: "image", label: "IMAGES", icon: "IMG" },
-  { id: "video", label: "VIDEOS", icon: "VID" },
-  { id: "document", label: "DOCS", icon: "DOC" },
-  { id: "note", label: "NOTES", icon: "TXT" },
-  { id: "trash", label: "TRASH", icon: "DEL" },
+const TABS = [
+  { id: "home", label: "HOME", icon: "◇" },
+  { id: "image", label: "IMAGES", icon: "◈", color: "#00e5ff" },
+  { id: "video", label: "VIDEOS", icon: "▶", color: "#e040fb" },
+  { id: "document", label: "DOCS", icon: "◧", color: "#ffd740" },
+  { id: "note", label: "NOTES", icon: "✎", color: "#69f0ae" },
+  { id: "trash", label: "TRASH", icon: "⌫", color: "#ff5252" },
 ];
 
 export default function App() {
-  const [view, setView] = useState("grid"); // grid | category | note-editor
-  const [activeCategory, setActiveCategory] = useState(null);
+  const [tab, setTab] = useState("home");
   const [stats, setStats] = useState({ total_files: 0, images: 0, videos: 0, documents: 0, notes: 0, trash: 0 });
   const [files, setFiles] = useState([]);
   const [editingNote, setEditingNote] = useState(null);
+  const [view, setView] = useState("list"); // list | editor
 
   const refreshStats = useCallback(async () => {
     try {
       const s = await invoke("get_stats");
       setStats(s);
     } catch (e) {
-      console.error("Failed to get stats:", e);
+      console.error(e);
     }
   }, []);
 
@@ -36,80 +37,60 @@ export default function App() {
       const f = await invoke("list_files", { category });
       setFiles(f);
     } catch (e) {
-      console.error("Failed to list files:", e);
+      console.error(e);
     }
   }, []);
 
+  useEffect(() => { refreshStats(); }, [refreshStats]);
+
   useEffect(() => {
-    refreshStats();
-  }, [refreshStats]);
-
-  const openCategory = (catId) => {
-    setActiveCategory(catId);
-    if (catId === "note") {
-      setView("category");
-    } else {
-      setView("category");
+    if (tab !== "home") {
+      loadFiles(tab);
+      setView("list");
+      setEditingNote(null);
     }
-    loadFiles(catId);
-  };
+  }, [tab, loadFiles]);
 
-  const goHome = () => {
-    setView("grid");
-    setActiveCategory(null);
+  const handleChanged = () => {
+    if (tab !== "home") loadFiles(tab);
     refreshStats();
   };
 
-  const openNoteEditor = (note = null) => {
+  const openEditor = (note = null) => {
     setEditingNote(note);
-    setView("note-editor");
+    setView("editor");
   };
 
-  const handleFilesChanged = () => {
-    if (activeCategory) loadFiles(activeCategory);
+  const closeEditor = () => {
+    setView("list");
+    setEditingNote(null);
+    if (tab === "note") loadFiles("note");
     refreshStats();
   };
 
   return (
-    <div className="cv-app">
+    <div className="app">
       <TitleBar />
-      <div className="cv-body">
-        <Sidebar
-          categories={CATEGORIES}
-          activeCategory={activeCategory}
-          stats={stats}
-          onSelect={openCategory}
-          onHome={goHome}
-          currentView={view}
-        />
-        <main className="cv-main">
-          {view === "grid" && (
-            <VaultGrid
-              stats={stats}
-              onOpenCategory={openCategory}
-            />
-          )}
-          {view === "category" && (
-            <FileList
-              category={activeCategory}
-              files={files}
-              onFilesChanged={handleFilesChanged}
-              onBack={goHome}
-              onEditNote={openNoteEditor}
-            />
-          )}
-          {view === "note-editor" && (
-            <NoteEditor
-              note={editingNote}
-              onSave={handleFilesChanged}
-              onBack={() => {
-                setView("category");
-                setActiveCategory("note");
-                loadFiles("note");
-              }}
-            />
-          )}
-        </main>
+      <NavTabs
+        tabs={TABS}
+        active={tab}
+        onSelect={setTab}
+        stats={stats}
+      />
+      <div className="content">
+        {tab === "home" ? (
+          <Dashboard stats={stats} onOpenCategory={setTab} />
+        ) : view === "editor" ? (
+          <NoteEditor note={editingNote} onSave={handleChanged} onBack={closeEditor} />
+        ) : (
+          <FileList
+            category={tab}
+            files={files}
+            color={TABS.find(t => t.id === tab)?.color}
+            onChanged={handleChanged}
+            onEditNote={openEditor}
+          />
+        )}
       </div>
     </div>
   );
