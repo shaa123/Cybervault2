@@ -477,31 +477,6 @@ class CyberVaultLauncher:
 
         self._threaded(task)
 
-    # ── Ensure Tauri CLI is installed ─────────────────
-    def _ensure_tauri_cli(self):
-        """Check if cargo-tauri is installed. If not, install it. Returns True if ready."""
-        if not CARGO:
-            self.root.after(0, self._log, "ERROR: Rust/Cargo not found!", "red")
-            self.root.after(0, self._log, "  → Install Rust from https://rustup.rs", "yellow")
-            self.root.after(0, self._log, "  → Then restart this launcher", "yellow")
-            return False
-
-        # Check if cargo tauri subcommand exists
-        ret, output = self._run_cmd([CARGO, "tauri", "--version"])
-        if ret == 0:
-            return True
-
-        # Not installed — install it
-        self.root.after(0, self._log, "Tauri CLI not found. Installing cargo-tauri...", "yellow")
-        self.root.after(0, self._log, "This may take a few minutes on first run...", "yellow")
-        ret, _ = self._run_cmd([CARGO, "install", "tauri-cli", "--version", "^2"])
-        if ret == 0:
-            self.root.after(0, self._log, "Tauri CLI installed!", "green")
-            return True
-        else:
-            self.root.after(0, self._log, "Failed to install Tauri CLI!", "red")
-            return False
-
     # ── Install ────────────────────────────────────────
     def _install_deps(self):
         path = self._require_path(need_repo=True)
@@ -511,24 +486,16 @@ class CyberVaultLauncher:
         def task():
             self.root.after(0, self._set_status, "INSTALLING...", YELLOW)
             self.root.after(0, self._log, "═" * 50, "yellow")
+            self.root.after(0, self._log, "INSTALLING ALL DEPENDENCIES (npm + tauri cli)...", "yellow")
 
-            # 1) npm install
-            self.root.after(0, self._log, "INSTALLING NPM DEPENDENCIES...", "yellow")
             ret, _ = self._run_cmd([NPM, "install"], cwd=path)
-            if ret != 0:
+            if ret == 0:
+                self.root.after(0, self._log, "All dependencies installed!", "green")
+                self.root.after(0, self._log, "Tauri CLI installed via @tauri-apps/cli npm package.", "green")
+                self.root.after(0, self._set_status, "INSTALLED", GREEN)
+            else:
                 self.root.after(0, self._log, "npm install failed!", "red")
                 self.root.after(0, self._set_status, "INSTALL FAILED", RED)
-                return
-
-            # 2) Ensure cargo-tauri is installed
-            self.root.after(0, self._log, "", None)
-            self.root.after(0, self._log, "CHECKING TAURI CLI...", "yellow")
-            if not self._ensure_tauri_cli():
-                self.root.after(0, self._set_status, "INSTALL INCOMPLETE", RED)
-                return
-
-            self.root.after(0, self._log, "All dependencies installed!", "green")
-            self.root.after(0, self._set_status, "INSTALLED", GREEN)
 
         self._threaded(task)
 
@@ -539,18 +506,12 @@ class CyberVaultLauncher:
             return
 
         def task():
-            self.root.after(0, self._set_status, "CHECKING TAURI CLI...", YELLOW)
-
-            # Auto-install tauri CLI if missing
-            if not self._ensure_tauri_cli():
-                self.root.after(0, self._set_status, "MISSING DEPENDENCIES", RED)
-                return
-
             self.root.after(0, self._set_status, "RUNNING DEV SERVER...", GREEN)
             self.root.after(0, self._log, "═" * 50, "green")
             self.root.after(0, self._log, "STARTING TAURI DEV MODE...", "green")
 
-            ret, _ = self._run_cmd([CARGO, "tauri", "dev"], cwd=path)
+            # Uses npm run tauri dev → runs @tauri-apps/cli from node_modules
+            ret, _ = self._run_cmd([NPM, "run", "tauri", "dev"], cwd=path)
             if ret == 0:
                 self.root.after(0, self._set_status, "DEV SERVER STOPPED", DIM)
             else:
@@ -565,19 +526,13 @@ class CyberVaultLauncher:
             return
 
         def task():
-            self.root.after(0, self._set_status, "CHECKING TAURI CLI...", YELLOW)
-
-            # Auto-install tauri CLI if missing
-            if not self._ensure_tauri_cli():
-                self.root.after(0, self._set_status, "MISSING DEPENDENCIES", RED)
-                return
-
             self.root.after(0, self._set_status, "BUILDING RELEASE...", MAGENTA)
             self.root.after(0, self._log, "═" * 50, "magenta")
             self.root.after(0, self._log, "BUILDING RELEASE BINARY...", "magenta")
             self.root.after(0, self._log, "This may take several minutes...", "yellow")
 
-            ret, _ = self._run_cmd([CARGO, "tauri", "build"], cwd=path)
+            # Uses npm run tauri build → runs @tauri-apps/cli from node_modules
+            ret, _ = self._run_cmd([NPM, "run", "tauri", "build"], cwd=path)
             if ret == 0:
                 self.root.after(0, self._log, "Build complete! Check src-tauri/target/release/", "green")
                 self.root.after(0, self._set_status, "BUILD COMPLETE", GREEN)
