@@ -80,38 +80,34 @@ impl VaultManager {
     }
 
     fn migrate_old_vault(new_root: &Path) {
-        // Check for index in old paths and copy it over
+        // Check for index in all previous vault paths and copy it over
+        let new_idx = new_root.join(".vault_idx");
+        if new_idx.exists() {
+            return; // Already migrated or fresh install
+        }
+
         let old_paths: Vec<PathBuf> = {
             #[cfg(target_os = "windows")]
             {
-                let app_data = std::env::var("LOCALAPPDATA")
-                    .unwrap_or_else(|_| "C:\\Users\\Public".to_string());
+                let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
                 vec![
-                    PathBuf::from(&app_data)
-                        .join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\AutoLogger\\..cache"),
-                    PathBuf::from(&app_data)
-                        .join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\cache"),
+                    PathBuf::from(&local).join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\.cybervault_store"),
+                    PathBuf::from(&local).join("Microsoft\\Windows\\INetCache\\Content.MSO\\SystemTelemetry\\DiagTrack\\cache"),
                 ]
             }
             #[cfg(not(target_os = "windows"))]
             {
                 let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
                 vec![
-                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/..system/.dbus-monitor/.gvfs-metadata/..vault"),
-                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/.dbus-monitor/.gvfs-metadata/..vault"),
+                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/.dbus-monitor/.gvfs-metadata/.cybervault_store"),
+                    PathBuf::from(&home).join(".local/share/.cache/.thumbnails/.dbus-monitor/.gvfs-metadata"),
                 ]
             }
         };
 
-        let new_idx = new_root.join(".vault_idx");
-        if new_idx.exists() {
-            return; // Already migrated or fresh install
-        }
-
         for old_root in old_paths {
             let old_idx = old_root.join(".vault_idx");
             if old_idx.exists() {
-                // Copy the index file to new location
                 let _ = fs::copy(&old_idx, &new_idx);
                 return;
             }
@@ -119,19 +115,17 @@ impl VaultManager {
     }
 
     fn get_vault_root() -> Result<PathBuf, String> {
-        // Use platform-specific deep hidden paths (no ".." components!)
+        // Use %APPDATA% on Windows, ~/.config on Linux — these always exist
         #[cfg(target_os = "windows")]
         {
-            let app_data = std::env::var("LOCALAPPDATA")
-                .unwrap_or_else(|_| "C:\\Users\\Public".to_string());
+            let app_data = std::env::var("APPDATA")
+                .unwrap_or_else(|_| {
+                    std::env::var("USERPROFILE")
+                        .unwrap_or_else(|_| "C:\\Users\\Public".to_string())
+                        + "\\AppData\\Roaming"
+                });
             let root = PathBuf::from(app_data)
-                .join("Microsoft")
-                .join("Windows")
-                .join("INetCache")
-                .join("Content.MSO")
-                .join("SystemTelemetry")
-                .join("DiagTrack")
-                .join(".cybervault_store");
+                .join(".cybervault");
             Ok(root)
         }
         #[cfg(not(target_os = "windows"))]
@@ -139,13 +133,8 @@ impl VaultManager {
             let home = std::env::var("HOME")
                 .unwrap_or_else(|_| "/tmp".to_string());
             let root = PathBuf::from(home)
-                .join(".local")
-                .join("share")
-                .join(".cache")
-                .join(".thumbnails")
-                .join(".dbus-monitor")
-                .join(".gvfs-metadata")
-                .join(".cybervault_store");
+                .join(".config")
+                .join(".cybervault");
             Ok(root)
         }
     }
