@@ -6,6 +6,7 @@ import Dashboard from "./components/Dashboard";
 import FileList from "./components/FileList";
 import NoteEditor from "./components/NoteEditor";
 import MediaViewer from "./components/MediaViewer";
+import Settings from "./components/Settings";
 import "./styles/app.css";
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { id: "document", label: "DOCS", icon: "◧", color: "#ffd740" },
   { id: "note", label: "NOTES", icon: "✎", color: "#69f0ae" },
   { id: "trash", label: "TRASH", icon: "⌫", color: "#ff5252" },
+  { id: "settings", label: "SETTINGS", icon: "⚙", color: "#7c4dff" },
 ];
 
 export default function App() {
@@ -36,7 +38,7 @@ export default function App() {
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
   useEffect(() => {
-    if (tab !== "home") {
+    if (tab !== "home" && tab !== "settings") {
       loadFiles(tab);
       setView("list");
       setEditingNote(null);
@@ -79,6 +81,8 @@ export default function App() {
       <div className="content">
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
+        ) : tab === "settings" ? (
+          <Settings stats={stats} onPurge={handleChanged} />
         ) : view === "editor" ? (
           <NoteEditor note={editingNote} onSave={handleChanged} onBack={closeEditor} />
         ) : (
