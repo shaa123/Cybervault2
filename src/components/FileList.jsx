@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -12,7 +12,38 @@ function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(2) + " GB";
 }
 
-export default function FileList({ category, files, color, onChanged, onEditNote }) {
+function getMime(name) {
+  const n = name.toLowerCase();
+  if (n.endsWith(".png")) return "image/png";
+  if (n.endsWith(".gif")) return "image/gif";
+  if (n.endsWith(".webp")) return "image/webp";
+  if (n.endsWith(".svg")) return "image/svg+xml";
+  if (n.endsWith(".bmp")) return "image/bmp";
+  return "image/jpeg";
+}
+
+function Thumbnail({ file }) {
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (file.mime_hint === "image") {
+      invoke("get_file_preview", { fileId: file.id })
+        .then((b64) => {
+          if (!cancelled) {
+            setSrc(`data:${getMime(file.original_name)};base64,${b64}`);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [file.id, file.mime_hint, file.original_name]);
+
+  if (src) return <img src={src} alt="" />;
+  return ICONS[file.mime_hint] || "◧";
+}
+
+export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
@@ -55,6 +86,8 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     catch (e) { console.error(e); }
   };
 
+  const isMedia = (f) => f.mime_hint === "image" || f.mime_hint === "video";
+
   return (
     <div className="filelist" style={{ "--list-color": color }}>
       <div className="fl-toolbar">
@@ -89,19 +122,26 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       ) : (
         <div className="fl-rows">
           {files.map((f) => (
-            <div key={f.id} className="fl-row">
+            <div
+              key={f.id}
+              className={`fl-row ${isMedia(f) ? "clickable" : ""}`}
+              onClick={() => isMedia(f) && onViewMedia(f)}
+            >
               <div className="fl-row-icon">
-                {ICONS[f.mime_hint] || "◧"}
+                {category !== "trash" ? <Thumbnail file={f} /> : (ICONS[f.mime_hint] || "◧")}
               </div>
               <div className="fl-row-info">
                 <div className="fl-row-name">{f.original_name}</div>
                 <div className="fl-row-meta">{formatSize(f.size)} · {f.hidden_at}</div>
               </div>
-              <div className="fl-row-actions">
+              <div className="fl-row-actions" onClick={e => e.stopPropagation()}>
                 {category === "trash" ? (
                   <button className="fl-row-btn restore" onClick={() => handleRestore(f.id)}>RESTORE</button>
                 ) : (
                   <>
+                    {isMedia(f) && (
+                      <button className="fl-row-btn view" onClick={() => onViewMedia(f)}>VIEW</button>
+                    )}
                     {category === "note" && (
                       <button className="fl-row-btn edit" onClick={() => onEditNote(f)}>EDIT</button>
                     )}

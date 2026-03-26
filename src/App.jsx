@@ -5,6 +5,7 @@ import NavTabs from "./components/NavTabs";
 import Dashboard from "./components/Dashboard";
 import FileList from "./components/FileList";
 import NoteEditor from "./components/NoteEditor";
+import MediaViewer from "./components/MediaViewer";
 import "./styles/app.css";
 
 const TABS = [
@@ -22,23 +23,14 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [editingNote, setEditingNote] = useState(null);
   const [view, setView] = useState("list"); // list | editor
+  const [viewingMedia, setViewingMedia] = useState(null);
 
   const refreshStats = useCallback(async () => {
-    try {
-      const s = await invoke("get_stats");
-      setStats(s);
-    } catch (e) {
-      console.error(e);
-    }
+    try { setStats(await invoke("get_stats")); } catch (e) { console.error(e); }
   }, []);
 
   const loadFiles = useCallback(async (category) => {
-    try {
-      const f = await invoke("list_files", { category });
-      setFiles(f);
-    } catch (e) {
-      console.error(e);
-    }
+    try { setFiles(await invoke("list_files", { category })); } catch (e) { console.error(e); }
   }, []);
 
   useEffect(() => { refreshStats(); }, [refreshStats]);
@@ -48,6 +40,7 @@ export default function App() {
       loadFiles(tab);
       setView("list");
       setEditingNote(null);
+      setViewingMedia(null);
     }
   }, [tab, loadFiles]);
 
@@ -56,10 +49,7 @@ export default function App() {
     refreshStats();
   };
 
-  const openEditor = (note = null) => {
-    setEditingNote(note);
-    setView("editor");
-  };
+  const openEditor = (note = null) => { setEditingNote(note); setView("editor"); };
 
   const closeEditor = () => {
     setView("list");
@@ -68,15 +58,24 @@ export default function App() {
     refreshStats();
   };
 
+  const openMedia = (file) => setViewingMedia(file);
+  const closeMedia = () => setViewingMedia(null);
+
+  const navigateMedia = useCallback((dir) => {
+    if (!viewingMedia) return;
+    const mediaFiles = files.filter(f => f.mime_hint === "image" || f.mime_hint === "video");
+    const idx = mediaFiles.findIndex(f => f.id === viewingMedia.id);
+    if (idx === -1) return;
+    const next = (idx + dir + mediaFiles.length) % mediaFiles.length;
+    setViewingMedia(mediaFiles[next]);
+  }, [viewingMedia, files]);
+
+  const mediaFiles = files.filter(f => f.mime_hint === "image" || f.mime_hint === "video");
+
   return (
     <div className="app">
       <TitleBar />
-      <NavTabs
-        tabs={TABS}
-        active={tab}
-        onSelect={setTab}
-        stats={stats}
-      />
+      <NavTabs tabs={TABS} active={tab} onSelect={setTab} stats={stats} />
       <div className="content">
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
@@ -89,9 +88,18 @@ export default function App() {
             color={TABS.find(t => t.id === tab)?.color}
             onChanged={handleChanged}
             onEditNote={openEditor}
+            onViewMedia={openMedia}
           />
         )}
       </div>
+      {viewingMedia && (
+        <MediaViewer
+          file={viewingMedia}
+          files={mediaFiles}
+          onClose={closeMedia}
+          onNavigate={navigateMedia}
+        />
+      )}
     </div>
   );
 }
