@@ -418,10 +418,16 @@ impl VaultManager {
     }
 
     pub fn move_to_trash(&mut self, file_id: &str) -> Result<(), String> {
-        let entry = self.index.entries.get_mut(file_id)
-            .ok_or("File not found in vault")?;
-        entry.original_category = Some(entry.category.clone());
-        entry.category = "trash".to_string();
+        // Permanently delete the file — no recycle bin
+        if let Some(entry) = self.index.entries.remove(file_id) {
+            let path = Path::new(&entry.hidden_path);
+            if path.exists() {
+                let _ = fs::remove_file(path);
+                self.cleanup_empty_dirs(&entry.hidden_path);
+            }
+        } else {
+            return Err("File not found in vault".to_string());
+        }
         self.save_index()
     }
 
@@ -467,14 +473,13 @@ impl VaultManager {
         };
 
         for entry in self.index.entries.values() {
-            stats.total_files += 1;
             match entry.category.as_str() {
-                "image" => stats.images += 1,
-                "video" => stats.videos += 1,
-                "document" => stats.documents += 1,
-                "note" => stats.notes += 1,
+                "image" => { stats.images += 1; stats.total_files += 1; },
+                "video" => { stats.videos += 1; stats.total_files += 1; },
+                "document" => { stats.documents += 1; stats.total_files += 1; },
+                "note" => { stats.notes += 1; stats.total_files += 1; },
                 "trash" => stats.trash += 1,
-                _ => stats.documents += 1,
+                _ => { stats.documents += 1; stats.total_files += 1; },
             }
         }
         stats
