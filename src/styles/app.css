@@ -336,6 +336,7 @@
 
 .tag-chip {
   font-size: 14px;
+  font-family: var(--font-file);
   font-weight: 600;
   letter-spacing: 1px;
   padding: 5px 12px;
@@ -491,6 +492,7 @@
 
 .grid-tile-tag {
   display: inline-block;
+  font-family: var(--font-file);
   font-size: 12px;
   padding: 1px 5px;
   border-radius: 4px;
@@ -1076,6 +1078,7 @@
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 10px;
+  font-family: var(--font-file);
   font-size: 14px;
   font-weight: 600;
   color: var(--text2);
@@ -1122,6 +1125,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
+  font-family: var(--font-file);
   font-size: 16px;
   transition: border-color 0.12s;
 }
