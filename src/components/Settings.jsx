@@ -5,54 +5,85 @@ import { invoke } from "@tauri-apps/api/core";
 /** Capture first frame of a video via invoke (avoids protocol deadlock) */
 async function captureVideoFrame(fileId) {
   try {
-    // Get first 8MB of video as base64 via invoke (async IPC, no protocol)
+    console.log(`[THUMB] Starting video capture for ${fileId}`);
     const b64 = await invoke("get_file_preview_chunk", { fileId, maxBytes: 8 * 1024 * 1024 });
-    // Detect mime from response (default mp4)
-    const blob = await fetch(`data:video/mp4;base64,${b64}`).then(r => r.blob());
-    const blobUrl = URL.createObjectURL(blob);
+    console.log(`[THUMB] Got ${b64.length} bytes of base64 data`);
 
-    return await new Promise((resolve) => {
-      const video = document.createElement("video");
-      video.muted = true;
-      video.preload = "auto";
-      video.src = blobUrl;
+    // Try multiple mime types — WebM needs different mime
+    const mimeTypes = ["video/mp4", "video/webm", "video/x-matroska"];
 
-      const timeout = setTimeout(() => {
-        URL.revokeObjectURL(blobUrl);
-        video.src = "";
-        resolve(null);
-      }, 15000);
+    for (const mime of mimeTypes) {
+      try {
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
 
-      video.onloadeddata = () => { video.currentTime = 0.1; };
-      video.onseeked = () => {
-        clearTimeout(timeout);
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = 256;
-          canvas.height = 256;
-          const ctx = canvas.getContext("2d");
-          const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
-          const w = video.videoWidth * scale;
-          const h = video.videoHeight * scale;
-          ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-          URL.revokeObjectURL(blobUrl);
-          video.src = "";
-          resolve(dataUrl.split(",")[1]);
-        } catch {
-          URL.revokeObjectURL(blobUrl);
-          video.src = "";
-          resolve(null);
+        const result = await new Promise((resolve) => {
+          const video = document.createElement("video");
+          video.muted = true;
+          video.preload = "auto";
+          video.src = blobUrl;
+
+          const timeout = setTimeout(() => {
+            console.log(`[THUMB] Timeout with mime ${mime}`);
+            URL.revokeObjectURL(blobUrl);
+            video.src = "";
+            resolve(null);
+          }, 10000);
+
+          video.onloadeddata = () => {
+            console.log(`[THUMB] Loaded with mime ${mime}, dimensions: ${video.videoWidth}x${video.videoHeight}`);
+            video.currentTime = 0.1;
+          };
+
+          video.onseeked = () => {
+            clearTimeout(timeout);
+            console.log(`[THUMB] Seeked, capturing frame`);
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = 256;
+              canvas.height = 256;
+              const ctx = canvas.getContext("2d");
+              const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
+              const w = video.videoWidth * scale;
+              const h = video.videoHeight * scale;
+              ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+              URL.revokeObjectURL(blobUrl);
+              video.src = "";
+              resolve(dataUrl.split(",")[1]);
+            } catch (e) {
+              console.log(`[THUMB] Canvas error: ${e}`);
+              URL.revokeObjectURL(blobUrl);
+              video.src = "";
+              resolve(null);
+            }
+          };
+
+          video.onerror = (e) => {
+            clearTimeout(timeout);
+            console.log(`[THUMB] Video error with mime ${mime}: ${e?.message || e}`);
+            URL.revokeObjectURL(blobUrl);
+            video.src = "";
+            resolve(null);
+          };
+        });
+
+        if (result) {
+          console.log(`[THUMB] Success with mime ${mime}`);
+          return result;
         }
-      };
-      video.onerror = () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(blobUrl);
-        video.src = "";
-        resolve(null);
-      };
-    });
-  } catch {
+      } catch (e) {
+        console.log(`[THUMB] Failed with mime ${mime}: ${e}`);
+      }
+    }
+
+    console.log(`[THUMB] All mime types failed for ${fileId}`);
+    return null;
+  } catch (e) {
+    console.log(`[THUMB] Invoke error: ${e}`);
     return null;
   }
 }
