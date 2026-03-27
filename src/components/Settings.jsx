@@ -127,6 +127,9 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         <button className={`st-tab ${openTab === "help" ? "active" : ""}`} onClick={() => toggle("help")}>
           HELP / INFO <span className="st-tab-arrow">{openTab === "help" ? "▲" : "▼"}</span>
         </button>
+        <button className={`st-tab ${openTab === "advanced" ? "active" : ""}`} onClick={() => toggle("advanced")}>
+          ADVANCED <span className="st-tab-arrow">{openTab === "advanced" ? "▲" : "▼"}</span>
+        </button>
       </div>
 
       <div className="settings-body">
@@ -401,11 +404,112 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
           </>
         )}
 
+        {/* ── ADVANCED ── */}
+        {openTab === "advanced" && (
+          <>
+            <div className="settings-section">
+              <div className="settings-section-title">THUMBNAIL ENGINE</div>
+              <div className="settings-about">
+                <div className="settings-about-row">
+                  <span className="settings-about-label">RESOLUTION</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="range" min="64" max="512" step="32" defaultValue="256"
+                      style={{ width: 120 }} />
+                    <span className="settings-about-value">256px</span>
+                  </div>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">MAX THUMBNAILS IN MEMORY</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="range" min="50" max="1000" step="50" defaultValue="200"
+                      style={{ width: 120 }} />
+                    <span className="settings-about-value">200</span>
+                  </div>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">LOADING COOLDOWN</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="range" min="0" max="10000" step="500" defaultValue="1000"
+                      style={{ width: 120 }} />
+                    <span className="settings-about-value">1.0s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">MEMORY MANAGEMENT</div>
+              <div className="settings-about">
+                <div className="settings-about-row">
+                  <span className="settings-about-label">UNLOAD IN FULLSCREEN</span>
+                  <span className="settings-about-value" style={{ color: "var(--green)" }}>ON</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">WIPE VIDEO CACHE ON LOCK</span>
+                  <span className="settings-about-value" style={{ color: "var(--green)" }}>ON</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">MEMORY WARNING THRESHOLD</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="range" min="0.5" max="10" step="0.5" defaultValue="1.5"
+                      style={{ width: 120 }} />
+                    <span className="settings-about-value">1.5%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">VIRTUAL SCROLL</div>
+              <div className="settings-about">
+                <div className="settings-about-row">
+                  <span className="settings-about-label">ENGINE</span>
+                  <span className="settings-about-value">@tanstack/react-virtual</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">OVERSCAN ROWS</span>
+                  <span className="settings-about-value">3</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">GRID COLUMNS</span>
+                  <span className="settings-about-value">5</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">LOADING STRATEGY</span>
+                  <span className="settings-about-value">VIEWPORT-ONLY (LAZY)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">CACHE</div>
+              <div className="settings-about">
+                <div className="settings-about-row">
+                  <span className="settings-about-label">STORAGE</span>
+                  <span className="settings-about-value">IndexedDB (cybervault_thumbnails)</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">EVICTION</span>
+                  <span className="settings-about-value">LRU (Least Recently Used)</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">VIDEO PROCESSING</span>
+                  <span className="settings-about-value">SERIAL QUEUE (1 AT A TIME)</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">OUTPUT FORMAT</span>
+                  <span className="settings-about-value">WebP @ 0.7 QUALITY</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
         {openTab === null && (
           <div className="fl-empty">
             <div className="fl-empty-icon">⚙</div>
             <div className="fl-empty-text">SELECT A TAB ABOVE</div>
-            <div className="fl-empty-sub">Choose Appearance, Tools, or Help / Info</div>
+            <div className="fl-empty-sub">Choose Appearance, Tools, Help / Info, or Advanced</div>
           </div>
         )}
       </div>

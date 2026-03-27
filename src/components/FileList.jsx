@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import SearchBar from "./SearchBar";
+import VirtualGrid from "./VirtualGrid";
+import { useThumbnails } from "../hooks/useThumbnails";
 
 const TITLES = { image: "IMAGES", video: "VIDEOS", document: "DOCUMENTS", note: "NOTES", trash: "TRASH" };
 const ICONS = { image: "◈", video: "▶", text: "✎", document: "◧" };
@@ -141,6 +143,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   const [sort, setSort] = useState("date-desc");
   const isGridView = category === "image" || category === "video";
   const showCategories = category !== "trash";
+
+  // Thumbnail engine for grid view
+  const { getThumbnail, generateForVisible } = useThumbnails();
 
   const refreshTags = useCallback(() => {
     invoke("list_tags", { category }).then(setTags).catch(() => setTags([]));
@@ -385,41 +390,16 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           </div>
         </div>
       ) : isGridView ? (
-        <div className="grid-wrap">
-          <div className="grid-tiles">
-            {filteredFiles.map((f) => (
-              <button
-                key={f.id}
-                className={`grid-tile ${selected.has(f.id) ? "selected" : ""}`}
-                onClick={() => {
-                  if (selected.size > 0) toggleSelect({ stopPropagation: () => {} }, f.id);
-                  else onViewMedia(f);
-                }}
-              >
-                <div className="grid-tile-select" onClick={(e) => toggleSelect(e, f.id)}>
-                  <div className={`grid-tile-checkbox ${selected.has(f.id) ? "checked" : ""}`}>
-                    {selected.has(f.id) && "✓"}
-                  </div>
-                </div>
-                <div className="grid-tile-thumb">
-                  <Thumbnail file={f} loadThumbs={!loading && filteredFiles.length <= 200} />
-                  {f.mime_hint === "video" && <div className="grid-tile-play">▶</div>}
-                </div>
-                <div className="grid-tile-info">
-                  <div className="grid-tile-name">{f.original_name}</div>
-                  <div className="grid-tile-meta">
-                    {formatSize(f.size)}
-                    {f.tag && <span className="grid-tile-tag">{f.tag}</span>}
-                  </div>
-                </div>
-                <div className="grid-tile-actions">
-                  <span className="fl-row-btn reveal" onClick={(e) => handleUnhide(e, f.id)}>UNHIDE</span>
-                  <span className="fl-row-btn del" onClick={(e) => handleDelete(e, f.id)}>DEL</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        <VirtualGrid
+          files={filteredFiles}
+          selected={selected}
+          onToggleSelect={toggleSelect}
+          onViewMedia={onViewMedia}
+          onUnhide={handleUnhide}
+          onDelete={handleDelete}
+          getThumbnail={getThumbnail}
+          generateForVisible={generateForVisible}
+        />
       ) : (
         <div className="fl-rows">
           {filteredFiles.map((f) => (
