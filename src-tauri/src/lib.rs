@@ -97,6 +97,18 @@ fn unhide_file(state: State<AppState>, file_id: String, destination: String) -> 
 }
 
 #[tauri::command]
+fn unhide_files(state: State<AppState>, file_ids: Vec<String>, destination: String) -> Result<usize, String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let mut count = 0;
+    for id in file_ids {
+        if vault.unhide_file(&id, &destination).is_ok() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+#[tauri::command]
 fn delete_file(state: State<AppState>, file_id: String) -> Result<(), String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
     vault.move_to_trash(&file_id)
@@ -524,6 +536,7 @@ pub fn run() {
             hide_files_batch,
             list_files,
             unhide_file,
+            unhide_files,
             delete_file,
             restore_file,
             purge_trash,

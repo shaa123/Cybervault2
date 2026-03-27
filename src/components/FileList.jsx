@@ -259,6 +259,31 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     } catch (e) { console.error(e); }
   };
 
+  const handleBatchUnhide = async () => {
+    const ids = selected.size > 0 ? [...selected] : filteredFiles.map(f => f.id);
+    if (ids.length === 0) return;
+    try {
+      const dest = await openDialog({ directory: true });
+      if (dest) {
+        setLoading(true);
+        setProgress({ done: 0, total: ids.length });
+        // Process in batches of 50
+        let done = 0;
+        for (let i = 0; i < ids.length; i += 50) {
+          const batch = ids.slice(i, i + 50);
+          const count = await invoke("unhide_files", { fileIds: batch, destination: dest.path || dest });
+          done += count;
+          setProgress({ done, total: ids.length });
+          await new Promise(r => setTimeout(r, 10));
+        }
+        setProgress(null);
+        setLoading(false);
+        setSelected(new Set());
+        onChanged();
+      }
+    } catch (e) { console.error(e); setProgress(null); setLoading(false); }
+  };
+
   // Open category popup in browse mode (just view/create tags)
   const openCatBrowse = () => {
     setCatMode("browse");
@@ -296,9 +321,16 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           <button className="fl-btn fl-btn-primary" onClick={() => onEditNote(null)}>+ NEW NOTE</button>
         )}
         {category !== "trash" && category !== "note" && (
-          <button className="fl-btn fl-btn-primary" onClick={handleAdd} disabled={loading}>
-            {loading ? "HIDING..." : "+ HIDE FILES"}
-          </button>
+          <>
+            <button className="fl-btn fl-btn-primary" onClick={handleAdd} disabled={loading}>
+              {loading ? "HIDING..." : "+ HIDE FILES"}
+            </button>
+            {files.length > 0 && (
+              <button className="fl-btn fl-btn-muted" onClick={handleBatchUnhide} disabled={loading}>
+                UNHIDE ALL
+              </button>
+            )}
+          </>
         )}
         {category === "trash" && files.length > 0 && (
           <button className="fl-btn fl-btn-danger" onClick={handlePurge}>PURGE ALL</button>
@@ -346,6 +378,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       {selected.size > 0 && (
         <div className="select-bar">
           <span className="select-count">{selected.size} SELECTED</span>
+          <button className="fl-btn fl-btn-primary" onClick={handleBatchUnhide}>UNHIDE</button>
           <button className="fl-btn fl-btn-primary" onClick={openCatAssign}>TAG</button>
           <button className="fl-btn fl-btn-danger" onClick={handleBatchDelete}>DELETE</button>
           <button className="fl-btn fl-btn-muted" onClick={() => setSelected(new Set())}>CANCEL</button>
