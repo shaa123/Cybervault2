@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' vault: https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; media-src 'self' vault: data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' vault: https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' vault: http://vault.localhost https://fonts.googleapis.com https://fonts.gstatic.com data: blob:; media-src 'self' vault: http://vault.localhost data: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' vault: http://vault.localhost https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com"
     }
   },
   "plugins": {}

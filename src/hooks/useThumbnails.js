@@ -68,12 +68,20 @@ export const THUMB_DEFAULTS = {
 };
 
 // ── URL helpers ─────────────────────────────────
+// Tauri 2 on Windows/Android: http://<scheme>.localhost/path
+// Tauri 2 on macOS/Linux: <scheme>://localhost/path
+const IS_WINDOWS = navigator.userAgent.includes("Windows");
+
 export function vaultFileUrl(fileId) {
-  return `vault://localhost/file/${fileId}`;
+  return IS_WINDOWS
+    ? `http://vault.localhost/file/${fileId}`
+    : `vault://localhost/file/${fileId}`;
 }
 
 export function vaultThumbUrl(fileId) {
-  return `vault://localhost/thumb/${fileId}`;
+  return IS_WINDOWS
+    ? `http://vault.localhost/thumb/${fileId}`
+    : `vault://localhost/thumb/${fileId}`;
 }
 
 // ── Main hook ───────────────────────────────────

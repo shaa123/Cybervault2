@@ -271,8 +271,11 @@ pub fn run() {
             let vault = vault_for_protocol.clone();
             std::thread::spawn(move || {
                 let uri = request.uri().to_string();
-                // Parse: vault://localhost/file/{id} or vault://localhost/thumb/{id}
-                let path = uri.strip_prefix("vault://localhost/")
+                // On Windows: http://vault.localhost/file/{id}
+                // On macOS/Linux: vault://localhost/file/{id}
+                let path = uri.strip_prefix("http://vault.localhost/")
+                    .or_else(|| uri.strip_prefix("https://vault.localhost/"))
+                    .or_else(|| uri.strip_prefix("vault://localhost/"))
                     .or_else(|| uri.strip_prefix("vault:///"))
                     .or_else(|| uri.strip_prefix("vault://"))
                     .unwrap_or("");
