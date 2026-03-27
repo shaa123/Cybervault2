@@ -195,6 +195,11 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   // Category popup handlers
   const openCatPopup = (target = null) => {
     setCatTarget(target);
+    // If opening from toolbar with no selection and no specific file,
+    // auto-select all visible files so the tag applies to something
+    if (!target && selected.size === 0) {
+      setSelected(new Set(filteredFiles.map(f => f.id)));
+    }
     setShowCatPopup(true);
   };
 
