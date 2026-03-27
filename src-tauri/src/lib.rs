@@ -156,6 +156,12 @@ fn list_tags(state: State<AppState>, category: String) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
+fn get_cached_thumb_ids(state: State<AppState>) -> Result<Vec<String>, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.get_cached_thumb_ids())
+}
+
+#[tauri::command]
 fn create_tag(state: State<AppState>, category: String, tag: String) -> Result<(), String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
     vault.create_tag(&category, &tag)
@@ -489,6 +495,7 @@ pub fn run() {
             delete_tag,
             delete_files,
             get_thumbnail,
+            get_cached_thumb_ids,
             has_thumbnail,
             regenerate_thumbnails,
             debug_info,

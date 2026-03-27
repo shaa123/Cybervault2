@@ -9,6 +9,7 @@
  */
 
 import { useRef, useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 const DB_NAME = "cybervault_thumbnails";
 const DB_STORE = "thumbs";
@@ -177,6 +178,23 @@ export function useThumbnails(settings = {}) {
     batchRef.current.clear();
     dbClear();
     forceUpdate(n => n + 1);
+  }, []);
+
+  // ── Preload cached thumbs on mount ─────────────
+  const preloaded = useRef(false);
+  useEffect(() => {
+    if (preloaded.current) return;
+    preloaded.current = true;
+
+    invoke("get_cached_thumb_ids").then((ids) => {
+      for (const id of ids) {
+        if (!cacheRef.current.has(id)) {
+          cacheRef.current.set(id, { url: vaultThumbUrl(id), lastAccess: Date.now() });
+          lruRef.current.push(id);
+        }
+      }
+      if (ids.length > 0) forceUpdate(n => n + 1);
+    }).catch(() => {});
   }, []);
 
   return {

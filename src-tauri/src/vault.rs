@@ -749,8 +749,28 @@ impl VaultManager {
     /// Check if a thumbnail exists for a file
     pub fn has_thumbnail(&self, file_id: &str) -> bool {
         self.index.entries.get(file_id)
-            .map(|e| !e.thumb_path.is_empty() && Path::new(&e.thumb_path).exists())
+            .map(|e| !e.thumb_path.is_empty())
             .unwrap_or(false)
+    }
+
+    /// Return all file IDs that have cached thumbnails
+    pub fn get_cached_thumb_ids(&self) -> Vec<String> {
+        self.index.entries.iter()
+            .filter(|(_, e)| !e.thumb_path.is_empty())
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Return IDs of image files that DON'T have thumbnails yet
+    pub fn get_missing_thumb_ids(&self) -> Vec<(String, String)> {
+        self.index.entries.iter()
+            .filter(|(_, e)| {
+                e.thumb_path.is_empty()
+                    && e.category != "trash"
+                    && (e.mime_hint == "image")
+            })
+            .map(|(id, e)| (id.clone(), e.hidden_path.clone()))
+            .collect()
     }
 
     pub fn save_note(&mut self, title: &str, content: &str) -> Result<VaultFile, String> {
