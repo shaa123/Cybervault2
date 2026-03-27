@@ -23,6 +23,7 @@ uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 base64 = "0.22"
 walkdir = "2"
+sha2 = "0.10"
 
 [profile.release]
 panic = "abort"

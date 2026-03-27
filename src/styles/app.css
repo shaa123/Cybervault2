@@ -1198,3 +1198,420 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ─── LOCK SCREEN ───────────────────────────── */
+
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lock-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.lock-logo {
+  width: 40px;
+  height: 40px;
+  background: var(--cyan);
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  box-shadow: 0 0 20px var(--cyan);
+  margin-bottom: 8px;
+}
+
+.lock-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  color: var(--text);
+}
+
+.lock-sub {
+  font-size: 14px;
+  color: var(--text3);
+  letter-spacing: 2px;
+}
+
+.lock-dots {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.lock-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-light);
+  transition: all 0.15s;
+}
+
+.lock-dot.filled {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+}
+
+.lock-error {
+  font-size: 14px;
+  color: var(--red);
+  letter-spacing: 2px;
+}
+
+.lock-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lock-key {
+  width: 64px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 20px;
+  font-family: var(--font-file);
+  color: var(--text);
+  transition: all 0.12s;
+}
+
+.lock-key:hover { background: var(--surface2); border-color: var(--border-light); }
+.lock-key:active { background: var(--surface3); }
+.lock-key-fn { font-size: 18px; color: var(--text3); }
+.lock-key-enter { color: var(--cyan); }
+
+/* ─── SEARCH BAR ────────────────────────────── */
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-file);
+  font-size: 14px;
+  transition: border-color 0.12s;
+}
+
+.search-input:focus { border-color: var(--cyan); }
+.search-input::placeholder { color: var(--text4); }
+
+.sort-select {
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text2);
+  font-family: var(--font-file);
+  font-size: 14px;
+  cursor: pointer;
+  appearance: none;
+  min-width: 120px;
+}
+
+.sort-select:focus { border-color: var(--cyan); outline: none; }
+.sort-select option { background: var(--surface); color: var(--text); }
+
+/* ─── DIAGBOT ───────────────────────────────── */
+
+.diagbot {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  width: 380px;
+  height: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  z-index: 15000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.diagbot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.diagbot-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--cyan);
+}
+
+.diagbot-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text3);
+  transition: all 0.12s;
+}
+
+.diagbot-close:hover { background: var(--red); color: white; }
+
+.diagbot-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diagbot-msg pre {
+  font-family: var(--font-file);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px 12px;
+  border-radius: 10px;
+  max-width: 90%;
+}
+
+.diagbot-msg.bot pre {
+  background: var(--surface2);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+}
+
+.diagbot-msg.user pre {
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  align-self: flex-end;
+  margin-left: auto;
+}
+
+.diagbot-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.diagbot-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-file);
+  font-size: 14px;
+}
+
+.diagbot-input:focus { border-color: var(--cyan); }
+.diagbot-input::placeholder { color: var(--text4); }
+
+.diagbot-send {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--cyan);
+  font-size: 16px;
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  transition: all 0.12s;
+}
+
+.diagbot-send:hover { background: rgba(0, 229, 255, 0.2); }
+
+/* DiagBot FAB */
+.diagbot-fab {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 20px;
+  color: var(--cyan);
+  z-index: 14999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: all 0.15s;
+}
+
+.diagbot-fab:hover {
+  background: var(--surface2);
+  border-color: var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+}
+
+/* ─── AUDIT LOG ─────────────────────────────── */
+
+.audit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 4, 8, 0.7);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.audit-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 700px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.audit-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+
+.audit-actions { display: flex; gap: 8px; align-items: center; }
+
+.audit-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 16px;
+  color: var(--text3);
+  transition: all 0.12s;
+}
+
+.audit-close:hover { background: var(--red); color: white; }
+
+.audit-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.audit-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text4);
+  font-size: 14px;
+  font-family: var(--font-file);
+}
+
+.audit-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: var(--font-file);
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.audit-row:hover { background: var(--surface2); }
+
+.audit-time {
+  color: var(--text4);
+  white-space: nowrap;
+  min-width: 160px;
+}
+
+.audit-action {
+  color: var(--cyan);
+  font-weight: 600;
+  min-width: 120px;
+  white-space: nowrap;
+}
+
+.audit-detail {
+  color: var(--text2);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── SLIDESHOW INDICATOR ───────────────────── */
+
+.slideshow-bar {
+  position: absolute;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(17, 17, 24, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.slideshow-bar button {
+  font-size: 16px;
+  color: var(--text2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.12s;
+}
+
+.slideshow-bar button:hover { color: var(--cyan); background: var(--surface2); }
+
+.slideshow-bar .active { color: var(--cyan); }
+
+.slideshow-timer {
+  font-size: 13px;
+  font-family: var(--font-file);
+  color: var(--text3);
+  letter-spacing: 1px;
+}

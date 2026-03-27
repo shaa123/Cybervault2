@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import NavTabs from "./components/NavTabs";
@@ -7,6 +7,9 @@ import FileList from "./components/FileList";
 import NoteEditor from "./components/NoteEditor";
 import MediaViewer from "./components/MediaViewer";
 import Settings from "./components/Settings";
+import LockScreen from "./components/LockScreen";
+import DiagBot from "./components/DiagBot";
+import AuditLog from "./components/AuditLog";
 import "./styles/app.css";
 
 const TABS = [
@@ -20,12 +23,58 @@ const TABS = [
 ];
 
 export default function App() {
+  const [locked, setLocked] = useState(false);
+  const [checkingPin, setCheckingPin] = useState(true);
   const [tab, setTab] = useState("home");
   const [stats, setStats] = useState({ total_files: 0, images: 0, videos: 0, documents: 0, notes: 0, trash: 0 });
   const [files, setFiles] = useState([]);
   const [editingNote, setEditingNote] = useState(null);
-  const [view, setView] = useState("list"); // list | editor
+  const [view, setView] = useState("list");
   const [viewingMedia, setViewingMedia] = useState(null);
+  const [diagBotOpen, setDiagBotOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const autoLockTimer = useRef(null);
+
+  // Check if PIN is set on startup
+  useEffect(() => {
+    invoke("has_pin").then(has => {
+      setLocked(has);
+      setCheckingPin(false);
+    }).catch(() => setCheckingPin(false));
+  }, []);
+
+  // Auto-lock: reset timer on any interaction
+  useEffect(() => {
+    if (locked) return;
+    const resetTimer = async () => {
+      if (autoLockTimer.current) clearTimeout(autoLockTimer.current);
+      try {
+        const settings = await invoke("get_settings");
+        const secs = settings.auto_lock_secs;
+        if (secs > 0) {
+          autoLockTimer.current = setTimeout(async () => {
+            const has = await invoke("has_pin");
+            if (has) setLocked(true);
+          }, secs * 1000);
+        }
+      } catch (e) { /* no settings yet */ }
+    };
+    resetTimer();
+    const events = ["mousemove", "keydown", "click", "scroll"];
+    events.forEach(ev => window.addEventListener(ev, resetTimer));
+    return () => {
+      events.forEach(ev => window.removeEventListener(ev, resetTimer));
+      if (autoLockTimer.current) clearTimeout(autoLockTimer.current);
+    };
+  }, [locked]);
+
+  const handleUnlock = async (pin) => {
+    try {
+      const ok = await invoke("verify_pin", { pin });
+      if (ok) { setLocked(false); return true; }
+      return false;
+    } catch (e) { return false; }
+  };
 
   const refreshStats = useCallback(async () => {
     try { setStats(await invoke("get_stats")); } catch (e) { console.error(e); }
@@ -47,15 +96,13 @@ export default function App() {
   }, [tab, loadFiles]);
 
   const handleChanged = () => {
-    if (tab !== "home") loadFiles(tab);
+    if (tab !== "home" && tab !== "settings") loadFiles(tab);
     refreshStats();
   };
 
   const openEditor = (note = null) => { setEditingNote(note); setView("editor"); };
-
   const closeEditor = () => {
-    setView("list");
-    setEditingNote(null);
+    setView("list"); setEditingNote(null);
     if (tab === "note") loadFiles("note");
     refreshStats();
   };
@@ -74,6 +121,9 @@ export default function App() {
 
   const mediaFiles = files.filter(f => f.mime_hint === "image" || f.mime_hint === "video");
 
+  if (checkingPin) return <div className="app" />;
+  if (locked) return <LockScreen onUnlock={handleUnlock} />;
+
   return (
     <div className="app">
       <TitleBar />
@@ -82,7 +132,7 @@ export default function App() {
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
         ) : tab === "settings" ? (
-          <Settings stats={stats} onPurge={handleChanged} />
+          <Settings stats={stats} onPurge={handleChanged} onOpenAudit={() => setAuditOpen(true)} />
         ) : view === "editor" ? (
           <NoteEditor note={editingNote} onSave={handleChanged} onBack={closeEditor} />
         ) : (
@@ -96,6 +146,7 @@ export default function App() {
           />
         )}
       </div>
+
       {viewingMedia && (
         <MediaViewer
           file={viewingMedia}
@@ -104,6 +155,15 @@ export default function App() {
           onNavigate={navigateMedia}
         />
       )}
+
+      {/* DiagBot FAB + Panel */}
+      {!diagBotOpen && (
+        <button className="diagbot-fab" onClick={() => setDiagBotOpen(true)}>◆</button>
+      )}
+      <DiagBot open={diagBotOpen} onClose={() => setDiagBotOpen(false)} />
+
+      {/* Audit Log */}
+      <AuditLog open={auditOpen} onClose={() => setAuditOpen(false)} />
     </div>
   );
 }

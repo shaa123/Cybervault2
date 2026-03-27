@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export default function MediaViewer({ file, files, onClose, onNavigate }) {
   const [src, setSrc] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [slideshow, setSlideshow] = useState(false);
+  const [slideshowInterval, setSlideshowInterval] = useState(3);
+  const timerRef = useRef(null);
 
   const isImage = file?.mime_hint === "image";
   const isVideo = file?.mime_hint === "video";
@@ -39,19 +42,38 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
 
   useEffect(() => { loadPreview(); }, [loadPreview]);
 
-  // Keyboard nav
+  // Keyboard
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { setSlideshow(false); onClose(); }
       else if (e.key === "ArrowLeft") onNavigate(-1);
       else if (e.key === "ArrowRight") onNavigate(1);
+      else if (e.key === "f" || e.key === "F") toggleFullscreen();
+      else if (e.key === " ") { e.preventDefault(); setSlideshow(p => !p); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose, onNavigate]);
 
-  if (!file) return null;
+  // Slideshow timer
+  useEffect(() => {
+    if (slideshow) {
+      timerRef.current = setInterval(() => {
+        onNavigate(1);
+      }, slideshowInterval * 1000);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [slideshow, slideshowInterval, onNavigate]);
 
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  };
+
+  if (!file) return null;
   const currentIdx = files.findIndex(f => f.id === file.id);
   const total = files.length;
 
@@ -59,41 +81,43 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
     <div className="media-overlay" onClick={onClose}>
       <div className="media-overlay-top" onClick={e => e.stopPropagation()}>
         <span className="media-overlay-name">{file.original_name}</span>
-        <button className="media-overlay-close" onClick={onClose}>✕</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="media-overlay-close" onClick={toggleFullscreen} style={{ background: "var(--surface)" }}>⛶</button>
+          <button className="media-overlay-close" onClick={() => { setSlideshow(false); onClose(); }}>✕</button>
+        </div>
       </div>
 
       {total > 1 && (
         <>
-          <button
-            className="media-overlay-nav prev"
-            onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}
-          >◀</button>
-          <button
-            className="media-overlay-nav next"
-            onClick={(e) => { e.stopPropagation(); onNavigate(1); }}
-          >▶</button>
+          <button className="media-overlay-nav prev"
+            onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}>◀</button>
+          <button className="media-overlay-nav next"
+            onClick={(e) => { e.stopPropagation(); onNavigate(1); }}>▶</button>
         </>
       )}
 
       <div onClick={e => e.stopPropagation()}>
         {loading ? (
-          <div style={{ color: "var(--text3)", fontSize: "1rem", letterSpacing: "2px" }}>
-            LOADING...
-          </div>
+          <div style={{ color: "var(--text3)", fontSize: 16, letterSpacing: 2 }}>LOADING...</div>
         ) : src && isImage ? (
           <img src={src} alt={file.original_name} />
         ) : src && isVideo ? (
           <video src={src} controls autoPlay />
         ) : (
-          <div style={{ color: "var(--text3)", fontSize: "1rem" }}>
-            PREVIEW UNAVAILABLE
-          </div>
+          <div style={{ color: "var(--text3)", fontSize: 16 }}>PREVIEW UNAVAILABLE</div>
         )}
       </div>
 
+      {/* Slideshow controls */}
       {total > 1 && (
-        <div className="media-overlay-counter">
-          {currentIdx + 1} / {total}
+        <div className="slideshow-bar" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setSlideshow(p => !p)} className={slideshow ? "active" : ""}>
+            {slideshow ? "⏸" : "▶"}
+          </button>
+          <span className="slideshow-timer">{slideshowInterval}s</span>
+          <button onClick={() => setSlideshowInterval(p => Math.max(1, p - 1))}>−</button>
+          <button onClick={() => setSlideshowInterval(p => Math.min(30, p + 1))}>+</button>
+          <span className="slideshow-timer">{currentIdx + 1}/{total}</span>
         </div>
       )}
     </div>

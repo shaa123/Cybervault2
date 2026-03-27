@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import SearchBar from "./SearchBar";
 
 const TITLES = { image: "IMAGES", video: "VIDEOS", document: "DOCUMENTS", note: "NOTES", trash: "TRASH" };
 const ICONS = { image: "◈", video: "▶", text: "✎", document: "◧" };
@@ -134,7 +135,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   const [tags, setTags] = useState([]);
   const [activeTag, setActiveTag] = useState("");
   const [showCatPopup, setShowCatPopup] = useState(false);
-  const [catMode, setCatMode] = useState("browse"); // "browse" or "assign"
+  const [catMode, setCatMode] = useState("browse");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("date-desc");
   const isGridView = category === "image" || category === "video";
   const showCategories = category !== "trash";
 
@@ -148,11 +151,35 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     setSelected(new Set());
   }, [category, files, refreshTags]);
 
-  const filteredFiles = activeTag === "__untagged"
-    ? files.filter(f => !f.tag)
-    : activeTag
-    ? files.filter(f => f.tag === activeTag)
-    : files;
+  const filteredFiles = useMemo(() => {
+    let result = activeTag === "__untagged"
+      ? files.filter(f => !f.tag)
+      : activeTag
+      ? files.filter(f => f.tag === activeTag)
+      : files;
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(f => f.original_name.toLowerCase().includes(q));
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      switch (sort) {
+        case "name-asc": return a.original_name.localeCompare(b.original_name);
+        case "name-desc": return b.original_name.localeCompare(a.original_name);
+        case "date-desc": return b.hidden_at.localeCompare(a.hidden_at);
+        case "date-asc": return a.hidden_at.localeCompare(b.hidden_at);
+        case "size-desc": return b.size - a.size;
+        case "size-asc": return a.size - b.size;
+        case "type": return a.mime_hint.localeCompare(b.mime_hint);
+        default: return 0;
+      }
+    });
+
+    return result;
+  }, [files, activeTag, search, sort]);
 
   // Ctrl+A
   useEffect(() => {
@@ -272,6 +299,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           <button className="fl-btn fl-btn-danger" onClick={handlePurge}>PURGE ALL</button>
         )}
       </div>
+
+      {/* Search & Sort */}
+      <SearchBar search={search} onSearch={setSearch} sort={sort} onSort={setSort} />
 
       {/* Tag filter bar */}
       {tags.length > 0 && (

@@ -39,11 +39,42 @@ struct VaultEntry {
     tag: String,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AuditEntry {
+    pub timestamp: String,
+    pub action: String,
+    pub detail: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct VaultSettings {
+    #[serde(default)]
+    pub pin_hash: String,
+    #[serde(default)]
+    pub auto_lock_secs: u64, // 0 = disabled
+    #[serde(default)]
+    pub bg_type: String, // "" | "image" | "video"
+    #[serde(default)]
+    pub bg_data: String, // base64 data or path
+    #[serde(default)]
+    pub bg_opacity: f64,
+    #[serde(default)]
+    pub bg_fit: String, // "cover" | "contain" | "fill" | "stretch"
+    #[serde(default)]
+    pub slideshow_interval: u64, // seconds, 0 = disabled
+    #[serde(default)]
+    pub slideshow_shuffle: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 struct VaultIndex {
     entries: HashMap<String, VaultEntry>,
     #[serde(default)]
     saved_tags: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    audit_log: Vec<AuditEntry>,
+    #[serde(default)]
+    settings: VaultSettings,
 }
 
 pub struct VaultManager {
@@ -68,11 +99,15 @@ impl VaultManager {
             serde_json::from_str(&decoded).unwrap_or(VaultIndex {
                 entries: HashMap::new(),
                 saved_tags: HashMap::new(),
+                audit_log: Vec::new(),
+                settings: VaultSettings::default(),
             })
         } else {
             VaultIndex {
                 entries: HashMap::new(),
                 saved_tags: HashMap::new(),
+                audit_log: Vec::new(),
+                settings: VaultSettings::default(),
             }
         };
 
@@ -302,6 +337,7 @@ impl VaultManager {
         };
 
         self.index.entries.insert(id.clone(), entry);
+        self.log_action("FILE_HIDDEN", &format!("{} → {}", original_name, cat));
         self.save_index()?;
 
         Ok(VaultFile {
@@ -570,6 +606,95 @@ impl VaultManager {
             ));
         }
         info
+    }
+
+    // ── PIN Auth ──────────────────────────────────
+    pub fn set_pin(&mut self, pin: &str) -> Result<(), String> {
+        use sha2::{Sha256, Digest};
+        let hash = format!("{:x}", Sha256::digest(pin.as_bytes()));
+        self.index.settings.pin_hash = hash;
+        self.log_action("PIN_SET", "PIN authentication configured");
+        self.save_index()
+    }
+
+    pub fn verify_pin(&self, pin: &str) -> bool {
+        if self.index.settings.pin_hash.is_empty() {
+            return true; // No PIN set
+        }
+        use sha2::{Sha256, Digest};
+        let hash = format!("{:x}", Sha256::digest(pin.as_bytes()));
+        hash == self.index.settings.pin_hash
+    }
+
+    pub fn has_pin(&self) -> bool {
+        !self.index.settings.pin_hash.is_empty()
+    }
+
+    pub fn remove_pin(&mut self) -> Result<(), String> {
+        self.index.settings.pin_hash = String::new();
+        self.log_action("PIN_REMOVED", "PIN authentication removed");
+        self.save_index()
+    }
+
+    // ── Settings ────────────────────────────────
+    pub fn get_settings(&self) -> VaultSettings {
+        self.index.settings.clone()
+    }
+
+    pub fn update_settings(&mut self, settings: VaultSettings) -> Result<(), String> {
+        self.index.settings = settings;
+        self.log_action("SETTINGS_UPDATED", "Vault settings changed");
+        self.save_index()
+    }
+
+    // ── Audit Log ───────────────────────────────
+    fn log_action(&mut self, action: &str, detail: &str) {
+        self.index.audit_log.push(AuditEntry {
+            timestamp: chrono_now(),
+            action: action.to_string(),
+            detail: detail.to_string(),
+        });
+        // Keep max 500 entries
+        if self.index.audit_log.len() > 500 {
+            let drain = self.index.audit_log.len() - 500;
+            self.index.audit_log.drain(0..drain);
+        }
+    }
+
+    pub fn get_audit_log(&self) -> Vec<AuditEntry> {
+        self.index.audit_log.clone()
+    }
+
+    pub fn clear_audit_log(&mut self) -> Result<(), String> {
+        self.index.audit_log.clear();
+        self.save_index()
+    }
+
+    // ── Backup / Restore ────────────────────────
+    pub fn create_backup(&self) -> Result<String, String> {
+        // Serialize entire index + collect all file data
+        let json = serde_json::to_string(&self.index).map_err(|e| e.to_string())?;
+        use base64::Engine;
+        // Simple backup: base64-encode the JSON index
+        // Files remain in vault — backup stores the index for recovery
+        Ok(base64::engine::general_purpose::STANDARD.encode(json.as_bytes()))
+    }
+
+    pub fn restore_backup(&mut self, backup_data: &str) -> Result<String, String> {
+        use base64::Engine;
+        let json_bytes = base64::engine::general_purpose::STANDARD
+            .decode(backup_data.trim())
+            .map_err(|e| format!("Invalid backup data: {}", e))?;
+        let json = String::from_utf8(json_bytes)
+            .map_err(|e| format!("Invalid UTF-8 in backup: {}", e))?;
+        let restored: VaultIndex = serde_json::from_str(&json)
+            .map_err(|e| format!("Invalid backup format: {}", e))?;
+
+        let count = restored.entries.len();
+        self.index = restored;
+        self.log_action("BACKUP_RESTORED", &format!("Restored {} entries", count));
+        self.save_index()?;
+        Ok(format!("Restored {} files", count))
     }
 
     fn cleanup_empty_dirs(&self, file_path: &str) {

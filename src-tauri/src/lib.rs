@@ -1,6 +1,6 @@
 mod vault;
 
-use vault::VaultManager;
+use vault::{VaultManager, AuditEntry, VaultSettings};
 use std::sync::Mutex;
 use tauri::State;
 use serde::{Deserialize, Serialize};
@@ -143,6 +143,68 @@ fn debug_info(state: State<AppState>) -> Result<String, String> {
     Ok(vault.debug_info())
 }
 
+#[tauri::command]
+fn set_pin(state: State<AppState>, pin: String) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.set_pin(&pin)
+}
+
+#[tauri::command]
+fn verify_pin(state: State<AppState>, pin: String) -> Result<bool, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.verify_pin(&pin))
+}
+
+#[tauri::command]
+fn has_pin(state: State<AppState>) -> Result<bool, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.has_pin())
+}
+
+#[tauri::command]
+fn remove_pin(state: State<AppState>) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.remove_pin()
+}
+
+#[tauri::command]
+fn get_settings(state: State<AppState>) -> Result<VaultSettings, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.get_settings())
+}
+
+#[tauri::command]
+fn update_settings(state: State<AppState>, settings: serde_json::Value) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let parsed: VaultSettings = serde_json::from_value(settings)
+        .map_err(|e| format!("Invalid settings: {}", e))?;
+    vault.update_settings(parsed)
+}
+
+#[tauri::command]
+fn get_audit_log(state: State<AppState>) -> Result<Vec<AuditEntry>, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.get_audit_log())
+}
+
+#[tauri::command]
+fn clear_audit_log(state: State<AppState>) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.clear_audit_log()
+}
+
+#[tauri::command]
+fn create_backup(state: State<AppState>) -> Result<String, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.create_backup()
+}
+
+#[tauri::command]
+fn restore_backup(state: State<AppState>, backup_data: String) -> Result<String, String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.restore_backup(&backup_data)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let vault = VaultManager::new().expect("Failed to initialize vault");
@@ -172,6 +234,16 @@ pub fn run() {
             delete_tag,
             delete_files,
             debug_info,
+            set_pin,
+            verify_pin,
+            has_pin,
+            remove_pin,
+            get_settings,
+            update_settings,
+            get_audit_log,
+            clear_audit_log,
+            create_backup,
+            restore_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
