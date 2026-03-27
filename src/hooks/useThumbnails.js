@@ -123,26 +123,26 @@ export function useThumbnails(settings = {}) {
     requestAnimationFrame(flushBatch);
   }, [flushBatch]);
 
-  // ── Load thumbnail ────────────────────────────
-  const loadThumb = useCallback((file) => {
+  // ── Load thumbnail via invoke (base64 in memory, no protocol requests) ──
+  const loadThumb = useCallback(async (file) => {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
-    if (noThumbRef.current.has(file.id)) return; // Already know no thumb exists
+    if (noThumbRef.current.has(file.id)) return;
+    // Skip if we know there's no cached thumb for this file
+    if (hasCachedThumb.current.size > 0 && !hasCachedThumb.current.has(file.id)) {
+      noThumbRef.current.add(file.id);
+      return;
+    }
     pendingRef.current.add(file.id);
 
-    // Only add URL if thumb exists — use Image to verify
-    const url = vaultThumbUrl(file.id);
-    const img = new Image();
-    img.onload = () => {
-      batchRef.current.set(file.id, url);
-      pendingRef.current.delete(file.id);
+    try {
+      const b64 = await invoke("get_thumbnail", { fileId: file.id });
+      const dataUrl = `data:image/jpeg;base64,${b64}`;
+      batchRef.current.set(file.id, dataUrl);
       scheduleFlush();
-    };
-    img.onerror = () => {
-      // No thumb available — mark so we don't retry
+    } catch {
       noThumbRef.current.add(file.id);
-      pendingRef.current.delete(file.id);
-    };
-    img.src = url;
+    }
+    pendingRef.current.delete(file.id);
   }, [scheduleFlush]);
 
   // ── Generate thumbnails for visible files ─────
@@ -151,10 +151,10 @@ export function useThumbnails(settings = {}) {
     if (now - lastGenTime.current < config.cooldownMs) return;
     lastGenTime.current = now;
 
-    // Load up to 15 per batch — thumbs are small ~10KB JPEGs
+    // Load up to 4 per batch via invoke to avoid overwhelming IPC
     let loaded = 0;
     for (const file of files) {
-      if (loaded >= 15) break;
+      if (loaded >= 4) break;
       if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) continue;
       loadThumb(file);
       loaded++;
@@ -191,20 +191,14 @@ export function useThumbnails(settings = {}) {
     forceUpdate(n => n + 1);
   }, []);
 
-  // ── Preload cached thumbs on mount ─────────────
+  // ── Preload: mark which IDs have cached thumbs (don't load data yet) ──
+  const hasCachedThumb = useRef(new Set());
   const preloaded = useRef(false);
   useEffect(() => {
     if (preloaded.current) return;
     preloaded.current = true;
-
     invoke("get_cached_thumb_ids").then((ids) => {
-      for (const id of ids) {
-        if (!cacheRef.current.has(id)) {
-          cacheRef.current.set(id, { url: vaultThumbUrl(id), lastAccess: Date.now() });
-          lruRef.current.push(id);
-        }
-      }
-      if (ids.length > 0) forceUpdate(n => n + 1);
+      hasCachedThumb.current = new Set(ids);
     }).catch(() => {});
   }, []);
 
