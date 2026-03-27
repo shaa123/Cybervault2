@@ -38,8 +38,9 @@ function Thumbnail({ file }) {
 }
 
 /* ── Category Popup ── */
-function CategoryPopup({ category, tags, onTagCreated, onAssign, onClose, mode }) {
+function CategoryPopup({ category, tags, onTagCreated, onTagDeleted, onAssign, onClose, mode }) {
   const [creating, setCreating] = useState(tags.length === 0);
+  const [deleting, setDeleting] = useState(false);
   const [newName, setNewName] = useState("");
   const inputRef = useRef(null);
 
@@ -58,11 +59,18 @@ function CategoryPopup({ category, tags, onTagCreated, onAssign, onClose, mode }
     } catch (e) { console.error(e); }
   };
 
+  const handleDelete = async (tag) => {
+    try {
+      await invoke("delete_tag", { category, tag });
+      onTagDeleted();
+    } catch (e) { console.error(e); }
+  };
+
   return (
     <div className="cat-popup-overlay" onClick={onClose}>
       <div className="cat-popup" onClick={e => e.stopPropagation()}>
         <div className="cat-popup-title">
-          {mode === "assign" ? "ASSIGN TO CATEGORY" : "CATEGORIES"}
+          {mode === "assign" ? "ASSIGN TO CATEGORY" : deleting ? "DELETE CATEGORIES" : "CATEGORIES"}
         </div>
 
         {creating && (
@@ -81,22 +89,37 @@ function CategoryPopup({ category, tags, onTagCreated, onAssign, onClose, mode }
 
         <div className="cat-popup-grid">
           {tags.map(t => (
-            <button
-              key={t}
-              className="cat-popup-tag"
-              onClick={() => mode === "assign" ? onAssign(t) : null}
-            >
-              {t}
-            </button>
+            <div key={t} className="cat-popup-tag-wrap">
+              <button
+                className={`cat-popup-tag ${deleting ? "deletable" : ""}`}
+                onClick={() => {
+                  if (deleting) handleDelete(t);
+                  else if (mode === "assign") onAssign(t);
+                }}
+              >
+                {deleting && <span className="cat-popup-x">✕</span>}
+                {t}
+              </button>
+            </div>
           ))}
-          <button className="cat-popup-tag create" onClick={() => setCreating(true)}>
-            + CREATE
-          </button>
+          {!deleting && (
+            <button className="cat-popup-tag create" onClick={() => setCreating(true)}>
+              + CREATE
+            </button>
+          )}
         </div>
 
         <div className="cat-popup-actions">
           {mode === "assign" && (
             <button className="fl-btn fl-btn-muted" onClick={() => onAssign("")}>CLEAR TAG</button>
+          )}
+          {tags.length > 0 && (
+            <button
+              className={`fl-btn ${deleting ? "fl-btn-primary" : "fl-btn-danger"}`}
+              onClick={() => setDeleting(!deleting)}
+            >
+              {deleting ? "DONE" : "DELETE"}
+            </button>
           )}
           <button className="fl-btn fl-btn-muted" onClick={onClose}>CLOSE</button>
         </div>
@@ -369,6 +392,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           category={category}
           tags={tags}
           onTagCreated={handleTagCreated}
+          onTagDeleted={() => { refreshTags(); onChanged(); }}
           onAssign={handleAssignTag}
           onClose={() => setShowCatPopup(false)}
           mode={catMode}

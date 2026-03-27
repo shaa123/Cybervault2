@@ -1102,6 +1102,24 @@
   color: var(--cyan);
 }
 
+.cat-popup-tag-wrap {
+  position: relative;
+}
+
+.cat-popup-tag.deletable {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.cat-popup-tag.deletable:hover {
+  background: rgba(255, 82, 82, 0.15);
+}
+
+.cat-popup-x {
+  margin-right: 4px;
+  font-size: 12px;
+}
+
 .cat-popup-tag.create {
   border-style: dashed;
   color: var(--text3);
