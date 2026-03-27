@@ -33,7 +33,6 @@ export default function App() {
   const [viewingMedia, setViewingMedia] = useState(null);
   const [diagBotOpen, setDiagBotOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
-  const autoLockTimer = useRef(null);
 
   // Check if PIN is set on startup
   useEffect(() => {
@@ -43,28 +42,42 @@ export default function App() {
     }).catch(() => setCheckingPin(false));
   }, []);
 
-  // Auto-lock: reset timer on any interaction
+  // Auto-lock: lock after inactivity
+  const autoLockSecs = useRef(0);
+
+  // Load auto-lock setting once on unlock
+  useEffect(() => {
+    if (!locked) {
+      invoke("get_settings")
+        .then(s => { autoLockSecs.current = s.auto_lock_secs || 0; })
+        .catch(() => {});
+    }
+  }, [locked]);
+
   useEffect(() => {
     if (locked) return;
-    const resetTimer = async () => {
-      if (autoLockTimer.current) clearTimeout(autoLockTimer.current);
-      try {
-        const settings = await invoke("get_settings");
-        const secs = settings.auto_lock_secs;
-        if (secs > 0) {
-          autoLockTimer.current = setTimeout(async () => {
-            const has = await invoke("has_pin");
-            if (has) setLocked(true);
-          }, secs * 1000);
-        }
-      } catch (e) { /* no settings yet */ }
-    };
-    resetTimer();
-    const events = ["mousemove", "keydown", "click", "scroll"];
-    events.forEach(ev => window.addEventListener(ev, resetTimer));
+
+    let lastActivity = Date.now();
+
+    const onActivity = () => { lastActivity = Date.now(); };
+
+    const checkIdle = setInterval(async () => {
+      const secs = autoLockSecs.current;
+      if (secs <= 0) return;
+      const idle = (Date.now() - lastActivity) / 1000;
+      if (idle >= secs) {
+        try {
+          const has = await invoke("has_pin");
+          if (has) setLocked(true);
+        } catch (e) { /* ignore */ }
+      }
+    }, 5000); // Check every 5 seconds
+
+    const events = ["mousemove", "keydown", "click", "scroll", "mousedown"];
+    events.forEach(ev => window.addEventListener(ev, onActivity));
     return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetTimer));
-      if (autoLockTimer.current) clearTimeout(autoLockTimer.current);
+      events.forEach(ev => window.removeEventListener(ev, onActivity));
+      clearInterval(checkIdle);
     };
   }, [locked]);
 
