@@ -206,9 +206,11 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     const cachedIds = await invoke("get_cached_thumb_ids");
     const totalFiles = (stats.images || 0) + (stats.videos || 0);
     let done = cachedIds.length;
+    console.log(`[CACHE] Starting. Cached: ${done}, Total: ${totalFiles}, Images: ${stats.images}, Videos: ${stats.videos}`);
     setCacheProgress({ done, total: totalFiles });
 
     // Phase 1: Cache image thumbnails (Rust backend, parallel)
+    console.log("[CACHE] Phase 1: Images");
     while (cachingRef.current) {
       try {
         const generated = await invoke("generate_thumbs_batch", { batchSize: 20 });
@@ -217,30 +219,42 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         setCacheProgress({ done: Math.min(done, totalFiles), total: totalFiles });
         await new Promise(r => setTimeout(r, 10));
       } catch (e) {
-        console.error("Image cache error:", e);
+        console.error("[CACHE] Image batch error:", e);
         break;
       }
     }
+    console.log(`[CACHE] Phase 1 done. Generated ${done - cachedIds.length} image thumbs`);
 
     // Phase 2: Cache video thumbnails (frontend, one at a time)
     if (cachingRef.current) {
+      console.log("[CACHE] Phase 2: Videos");
       try {
         const videoIds = await invoke("get_missing_video_thumb_ids");
+        console.log(`[CACHE] Found ${videoIds.length} videos without thumbnails`);
         for (const vid of videoIds) {
           if (!cachingRef.current) break;
+          console.log(`[CACHE] Processing video: ${vid}`);
           try {
             const thumbData = await captureVideoFrame(vid);
             if (thumbData) {
+              console.log(`[CACHE] Got frame for ${vid}, saving (${thumbData.length} bytes b64)`);
               await invoke("save_thumb_data", { fileId: vid, thumbBase64: thumbData });
               done++;
               setCacheProgress({ done: Math.min(done, totalFiles), total: totalFiles });
+            } else {
+              console.log(`[CACHE] No frame captured for ${vid}`);
             }
-          } catch { /* skip failed videos */ }
+          } catch (e) {
+            console.error(`[CACHE] Video ${vid} error:`, e);
+          }
           await new Promise(r => setTimeout(r, 100));
         }
-      } catch (e) { console.error("Video cache error:", e); }
+      } catch (e) { console.error("[CACHE] Video phase error:", e); }
+    } else {
+      console.log("[CACHE] Skipped phase 2 (stopped)");
     }
 
+    console.log("[CACHE] Complete");
     setCacheProgress({ done: totalFiles, total: totalFiles });
     cachingRef.current = false;
     setCaching(false);
