@@ -628,6 +628,15 @@ impl VaultManager {
                 .map(|_| ())
         }).map_err(|e| format!("Failed to unhide: {}", e))?;
 
+        // Remove hidden/system attributes on Windows so file is visible
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            let _ = Command::new("attrib")
+                .args(["-H", "-S", &dest.to_string_lossy()])
+                .output();
+        }
+
         // Cleanup empty parent dirs
         self.cleanup_empty_dirs(&entry.hidden_path);
 
