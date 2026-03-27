@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { vaultFileUrl } from "../hooks/useThumbnails";
 
-export default function MediaViewer({ file, files, onClose, onNavigate }) {
+export default function MediaViewer({ file, files, onClose, onNavigate, onDelete }) {
   const [slideshow, setSlideshow] = useState(false);
   const [slideshowInterval, setSlideshowInterval] = useState(3);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -24,10 +24,11 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
       else if (e.key === "ArrowRight") onNavigate(1);
       else if (e.key === "f" || e.key === "F") toggleFullscreen();
       else if (e.key === " ") { e.preventDefault(); setSlideshow(p => !p); }
+      else if (e.key === "Delete" && onDelete) { e.preventDefault(); onDelete(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onClose, onNavigate]);
+  }, [onClose, onNavigate, onDelete]);
 
   // Slideshow timer
   useEffect(() => {

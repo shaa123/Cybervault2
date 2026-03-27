@@ -148,6 +148,25 @@ export default function App() {
     setViewingMedia(list[next]);
   }, [viewingMedia]);
 
+  const deleteCurrentMedia = useCallback(async () => {
+    if (!viewingMedia) return;
+    const list = displayedListRef.current;
+    const idx = list.findIndex(f => f.id === viewingMedia.id);
+    try {
+      await invoke("delete_file", { fileId: viewingMedia.id });
+      const newList = list.filter(f => f.id !== viewingMedia.id);
+      displayedListRef.current = newList;
+      if (newList.length === 0) {
+        setViewingMedia(null);
+      } else {
+        const nextIdx = Math.min(idx, newList.length - 1);
+        setViewingMedia(newList[nextIdx]);
+      }
+      if (tab !== "home" && tab !== "settings") loadFiles(tab);
+      refreshStats();
+    } catch (e) { console.error(e); }
+  }, [viewingMedia, tab, loadFiles, refreshStats]);
+
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
 
@@ -180,6 +199,7 @@ export default function App() {
           files={displayedListRef.current}
           onClose={closeMedia}
           onNavigate={navigateMedia}
+          onDelete={deleteCurrentMedia}
         />
       )}
 
