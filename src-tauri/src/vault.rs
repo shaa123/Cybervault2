@@ -689,13 +689,26 @@ impl VaultManager {
         };
 
         for entry in self.index.entries.values() {
-            match entry.category.as_str() {
-                "image" => { stats.images += 1; stats.total_files += 1; },
-                "video" => { stats.videos += 1; stats.total_files += 1; },
-                "document" => { stats.documents += 1; stats.total_files += 1; },
-                "note" => { stats.notes += 1; stats.total_files += 1; },
-                "trash" => stats.trash += 1,
-                _ => { stats.documents += 1; stats.total_files += 1; },
+            if entry.category == "trash" {
+                stats.trash += 1;
+                continue;
+            }
+            stats.total_files += 1;
+            // Use mime_hint for accurate counting (category may be wrong
+            // if files were imported via the wrong tab)
+            match entry.mime_hint.as_str() {
+                "image" => stats.images += 1,
+                "video" => stats.videos += 1,
+                "text" => stats.notes += 1,
+                "document" => stats.documents += 1,
+                _ => {
+                    // Fall back to category
+                    match entry.category.as_str() {
+                        "note" => stats.notes += 1,
+                        "document" => stats.documents += 1,
+                        _ => stats.documents += 1,
+                    }
+                }
             }
         }
         stats
@@ -771,7 +784,15 @@ impl VaultManager {
     /// Return IDs of image files that DON'T have thumbnails yet
     pub fn get_missing_video_thumb_ids(&self) -> Vec<String> {
         self.index.entries.iter()
-            .filter(|(_, e)| e.thumb_path.is_empty() && e.category != "trash" && e.mime_hint == "video")
+            .filter(|(_, e)| {
+                if !e.thumb_path.is_empty() || e.category == "trash" { return false; }
+                // Check mime_hint OR original filename extension
+                if e.mime_hint == "video" { return true; }
+                let lower = e.original_name.to_lowercase();
+                lower.ends_with(".mp4") || lower.ends_with(".webm") || lower.ends_with(".mkv")
+                    || lower.ends_with(".avi") || lower.ends_with(".mov") || lower.ends_with(".wmv")
+                    || lower.ends_with(".flv")
+            })
             .map(|(id, _)| id.clone())
             .collect()
     }
@@ -779,9 +800,17 @@ impl VaultManager {
     pub fn get_missing_thumb_ids(&self) -> Vec<(String, String)> {
         self.index.entries.iter()
             .filter(|(_, e)| {
-                e.thumb_path.is_empty()
-                    && e.category != "trash"
-                    && (e.mime_hint == "image")
+                if !e.thumb_path.is_empty() || e.category == "trash" { return false; }
+                // Only images (not videos — videos need frontend frame capture)
+                let lower = e.original_name.to_lowercase();
+                let is_video = lower.ends_with(".mp4") || lower.ends_with(".webm")
+                    || lower.ends_with(".mkv") || lower.ends_with(".avi")
+                    || lower.ends_with(".mov") || lower.ends_with(".wmv")
+                    || lower.ends_with(".flv");
+                !is_video && (e.mime_hint == "image" || lower.ends_with(".jpg")
+                    || lower.ends_with(".jpeg") || lower.ends_with(".png")
+                    || lower.ends_with(".gif") || lower.ends_with(".bmp")
+                    || lower.ends_with(".webp"))
             })
             .map(|(id, e)| (id.clone(), e.hidden_path.clone()))
             .collect()
