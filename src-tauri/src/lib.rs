@@ -250,6 +250,25 @@ fn generate_thumbs_batch(state: State<AppState>, batch_size: usize) -> Result<us
     Ok(generated)
 }
 
+/// Read first N bytes of a file as base64 (for video frame capture)
+#[tauri::command]
+fn get_file_preview_chunk(state: State<AppState>, file_id: String, max_bytes: usize) -> Result<String, String> {
+    let file_path = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        vault.get_file_path(&file_id)?
+    };
+
+    use std::io::Read;
+    let mut file = std::fs::File::open(&file_path).map_err(|e| e.to_string())?;
+    let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
+    let read_size = max_bytes.min(file_size);
+    let mut buf = vec![0u8; read_size];
+    file.read_exact(&mut buf).map_err(|e| e.to_string())?;
+
+    use base64::Engine;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&buf))
+}
+
 /// Save a frontend-generated thumbnail (e.g. video frame capture)
 #[tauri::command]
 fn save_thumb_data(state: State<AppState>, file_id: String, thumb_base64: String) -> Result<(), String> {
@@ -521,6 +540,7 @@ pub fn run() {
             get_thumbnail,
             get_cached_thumb_ids,
             generate_thumbs_batch,
+            get_file_preview_chunk,
             save_thumb_data,
             get_missing_video_thumb_ids,
             has_thumbnail,

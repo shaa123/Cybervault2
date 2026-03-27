@@ -1,48 +1,60 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { vaultFileUrl } from "../hooks/useThumbnails";
+// vaultFileUrl no longer needed — video frame capture uses invoke
 
-/** Capture first frame of a video file as base64 JPEG */
-function captureVideoFrame(fileId) {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.preload = "auto";
-    video.crossOrigin = "anonymous";
-    video.src = vaultFileUrl(fileId);
+/** Capture first frame of a video via invoke (avoids protocol deadlock) */
+async function captureVideoFrame(fileId) {
+  try {
+    // Get first 8MB of video as base64 via invoke (async IPC, no protocol)
+    const b64 = await invoke("get_file_preview_chunk", { fileId, maxBytes: 8 * 1024 * 1024 });
+    // Detect mime from response (default mp4)
+    const blob = await fetch(`data:video/mp4;base64,${b64}`).then(r => r.blob());
+    const blobUrl = URL.createObjectURL(blob);
 
-    const timeout = setTimeout(() => {
-      video.src = "";
-      resolve(null);
-    }, 10000);
+    return await new Promise((resolve) => {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "auto";
+      video.src = blobUrl;
 
-    video.onloadeddata = () => { video.currentTime = 0.5; };
-    video.onseeked = () => {
-      clearTimeout(timeout);
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext("2d");
-        const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
-        const w = video.videoWidth * scale;
-        const h = video.videoHeight * scale;
-        ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-        const b64 = dataUrl.split(",")[1];
-        video.src = "";
-        resolve(b64);
-      } catch {
+      const timeout = setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
         video.src = "";
         resolve(null);
-      }
-    };
-    video.onerror = () => {
-      clearTimeout(timeout);
-      video.src = "";
-      resolve(null);
-    };
-  });
+      }, 15000);
+
+      video.onloadeddata = () => { video.currentTime = 0.1; };
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = 256;
+          canvas.height = 256;
+          const ctx = canvas.getContext("2d");
+          const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
+          const w = video.videoWidth * scale;
+          const h = video.videoHeight * scale;
+          ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+          URL.revokeObjectURL(blobUrl);
+          video.src = "";
+          resolve(dataUrl.split(",")[1]);
+        } catch {
+          URL.revokeObjectURL(blobUrl);
+          video.src = "";
+          resolve(null);
+        }
+      };
+      video.onerror = () => {
+        clearTimeout(timeout);
+        URL.revokeObjectURL(blobUrl);
+        video.src = "";
+        resolve(null);
+      };
+    });
+  } catch {
+    return null;
+  }
 }
 
 export default function Settings({ stats, onPurge, onOpenAudit }) {
