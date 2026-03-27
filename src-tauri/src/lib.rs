@@ -194,10 +194,42 @@ fn has_thumbnail(state: State<AppState>, file_id: String) -> Result<bool, String
     Ok(vault.has_thumbnail(&file_id))
 }
 
+/// Generate thumbnails for a batch of files that don't have them.
+/// Returns how many were generated. Call repeatedly until it returns 0.
 #[tauri::command]
-fn regenerate_thumbnails(state: State<AppState>) -> Result<usize, String> {
-    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
-    Ok(vault.regenerate_thumbnails())
+fn generate_thumbs_batch(state: State<AppState>, batch_size: usize) -> Result<usize, String> {
+    // Get list of files needing thumbs (brief lock)
+    let missing: Vec<(String, String)> = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        let all = vault.get_missing_thumb_ids();
+        all.into_iter().take(batch_size).collect()
+    }; // Lock released
+
+    if missing.is_empty() { return Ok(0); }
+
+    // Get vault root for thumb dir (brief lock)
+    let vault_root = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        vault.vault_root_path().to_path_buf()
+    };
+
+    let thumb_dir = vault_root.join(".thumbs");
+    let _ = std::fs::create_dir_all(&thumb_dir);
+
+    let mut generated = 0;
+    for (file_id, hidden_path) in &missing {
+        let thumb = vault::VaultManager::generate_thumbnail_static(
+            std::path::Path::new(hidden_path), &thumb_dir
+        );
+        if !thumb.is_empty() {
+            // Brief lock to save thumb path
+            if let Ok(mut vault) = state.vault.lock() {
+                let _ = vault.set_thumb_path(file_id, &thumb);
+            }
+            generated += 1;
+        }
+    }
+    Ok(generated)
 }
 
 #[tauri::command]
@@ -496,8 +528,9 @@ pub fn run() {
             delete_files,
             get_thumbnail,
             get_cached_thumb_ids,
+            generate_thumbs_batch,
             has_thumbnail,
-            regenerate_thumbnails,
+            generate_thumbs_batch,
             debug_info,
             set_pin,
             verify_pin,

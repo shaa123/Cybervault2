@@ -3,6 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 export default function Settings({ stats, onPurge, onOpenAudit }) {
   const [debugText, setDebugText] = useState("");
+  const [caching, setCaching] = useState(false);
+  const [cacheProgress, setCacheProgress] = useState(null); // { done, total } or null
+  const cachingRef = useRef(false);
   const [purging, setPurging] = useState(false);
   const [openTab, setOpenTab] = useState(null);
 
@@ -102,6 +105,52 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     catch (e) { setDebugText("Error: " + e); }
   };
 
+  const toggleCaching = async () => {
+    if (caching) {
+      // Stop
+      cachingRef.current = false;
+      setCaching(false);
+      setCacheProgress(null);
+      return;
+    }
+    // Start background caching
+    cachingRef.current = true;
+    setCaching(true);
+
+    // Count total missing
+    const cachedIds = await invoke("get_cached_thumb_ids");
+    const totalImages = stats.images || 0;
+    const alreadyCached = cachedIds.length;
+    let done = alreadyCached;
+    setCacheProgress({ done, total: totalImages });
+
+    // Process in batches of 5
+    while (cachingRef.current) {
+      try {
+        const generated = await invoke("generate_thumbs_batch", { batchSize: 5 });
+        if (generated === 0) {
+          // All done
+          setCacheProgress({ done: totalImages, total: totalImages });
+          break;
+        }
+        done += generated;
+        setCacheProgress({ done: Math.min(done, totalImages), total: totalImages });
+        // Yield to keep UI responsive
+        await new Promise(r => setTimeout(r, 50));
+      } catch (e) {
+        console.error("Cache batch error:", e);
+        break;
+      }
+    }
+    cachingRef.current = false;
+    setCaching(false);
+  };
+
+  // Stop caching on unmount
+  useEffect(() => {
+    return () => { cachingRef.current = false; };
+  }, []);
+
   const AUTO_LOCK_OPTIONS = [
     { label: "OFF", value: 0 },
     { label: "30s", value: 30 },
@@ -126,9 +175,6 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         </button>
         <button className={`st-tab ${openTab === "help" ? "active" : ""}`} onClick={() => toggle("help")}>
           HELP / INFO <span className="st-tab-arrow">{openTab === "help" ? "▲" : "▼"}</span>
-        </button>
-        <button className={`st-tab ${openTab === "advanced" ? "active" : ""}`} onClick={() => toggle("advanced")}>
-          ADVANCED <span className="st-tab-arrow">{openTab === "advanced" ? "▲" : "▼"}</span>
         </button>
       </div>
 
@@ -288,6 +334,30 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                   </div>
                   <button className="fl-btn fl-btn-primary" onClick={onOpenAudit}>VIEW</button>
                 </div>
+                <div className="settings-action-row">
+                  <div className="settings-action-info">
+                    <div className="settings-action-name">CACHE ALL THUMBNAILS</div>
+                    <div className="settings-action-desc">
+                      {cacheProgress
+                        ? `${cacheProgress.done} / ${cacheProgress.total} cached`
+                        : "Generate thumbnails for all images in the background"}
+                    </div>
+                    {cacheProgress && (
+                      <div className="upload-progress-bar" style={{ marginTop: 6 }}>
+                        <div
+                          className="upload-progress-fill"
+                          style={{ width: `${cacheProgress.total > 0 ? Math.round((cacheProgress.done / cacheProgress.total) * 100) : 0}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className={`fl-btn ${caching ? "fl-btn-danger" : "fl-btn-primary"}`}
+                    onClick={toggleCaching}
+                  >
+                    {caching ? "STOP" : "START"}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -404,112 +474,11 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
           </>
         )}
 
-        {/* ── ADVANCED ── */}
-        {openTab === "advanced" && (
-          <>
-            <div className="settings-section">
-              <div className="settings-section-title">THUMBNAIL ENGINE</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">RESOLUTION</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input type="range" min="64" max="512" step="32" defaultValue="256"
-                      style={{ width: 120 }} />
-                    <span className="settings-about-value">256px</span>
-                  </div>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">MAX THUMBNAILS IN MEMORY</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input type="range" min="50" max="1000" step="50" defaultValue="200"
-                      style={{ width: 120 }} />
-                    <span className="settings-about-value">200</span>
-                  </div>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">LOADING COOLDOWN</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input type="range" min="0" max="10000" step="500" defaultValue="1000"
-                      style={{ width: 120 }} />
-                    <span className="settings-about-value">1.0s</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-title">MEMORY MANAGEMENT</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">UNLOAD IN FULLSCREEN</span>
-                  <span className="settings-about-value" style={{ color: "var(--green)" }}>ON</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">WIPE VIDEO CACHE ON LOCK</span>
-                  <span className="settings-about-value" style={{ color: "var(--green)" }}>ON</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">MEMORY WARNING THRESHOLD</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input type="range" min="0.5" max="10" step="0.5" defaultValue="1.5"
-                      style={{ width: 120 }} />
-                    <span className="settings-about-value">1.5%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-title">VIRTUAL SCROLL</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">ENGINE</span>
-                  <span className="settings-about-value">@tanstack/react-virtual</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">OVERSCAN ROWS</span>
-                  <span className="settings-about-value">3</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">GRID COLUMNS</span>
-                  <span className="settings-about-value">5</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">LOADING STRATEGY</span>
-                  <span className="settings-about-value">VIEWPORT-ONLY (LAZY)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-title">CACHE</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">STORAGE</span>
-                  <span className="settings-about-value">IndexedDB (cybervault_thumbnails)</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">EVICTION</span>
-                  <span className="settings-about-value">LRU (Least Recently Used)</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">VIDEO PROCESSING</span>
-                  <span className="settings-about-value">SERIAL QUEUE (1 AT A TIME)</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">OUTPUT FORMAT</span>
-                  <span className="settings-about-value">WebP @ 0.7 QUALITY</span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
         {openTab === null && (
           <div className="fl-empty">
             <div className="fl-empty-icon">⚙</div>
             <div className="fl-empty-text">SELECT A TAB ABOVE</div>
-            <div className="fl-empty-sub">Choose Appearance, Tools, Help / Info, or Advanced</div>
+            <div className="fl-empty-sub">Choose Appearance, Tools, or Help / Info</div>
           </div>
         )}
       </div>
