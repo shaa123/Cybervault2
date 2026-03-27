@@ -538,6 +538,9 @@ impl VaultManager {
             .filter(|e| {
                 if category == "all" {
                     e.category != "trash"
+                } else if category == "image" || category == "video" {
+                    // Use mime_hint for media types (files may have wrong category)
+                    e.mime_hint == category && e.category != "trash"
                 } else {
                     e.category == category
                 }
