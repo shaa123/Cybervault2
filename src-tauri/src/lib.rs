@@ -38,10 +38,22 @@ fn hide_files(state: State<AppState>, paths: Vec<String>, category: String) -> R
     for path in paths {
         match vault.hide_file(&path, &category) {
             Ok(vf) => results.push(vf),
-            Err(e) => return Err(format!("Failed to hide {}: {}", path, e)),
+            Err(e) => eprintln!("Failed to hide {}: {}", path, e),
         }
     }
     Ok(results)
+}
+
+#[tauri::command]
+fn hide_files_batch(state: State<AppState>, paths: Vec<String>, category: String) -> Result<usize, String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let mut count = 0;
+    for path in paths {
+        if vault.hide_file(&path, &category).is_ok() {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 #[tauri::command]
@@ -218,6 +230,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             hide_files,
+            hide_files_batch,
             list_files,
             unhide_file,
             delete_file,

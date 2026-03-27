@@ -23,17 +23,17 @@ function getMime(name) {
   return "image/jpeg";
 }
 
-function Thumbnail({ file }) {
+function Thumbnail({ file, loadThumbs }) {
   const [src, setSrc] = useState(null);
   useEffect(() => {
     let cancelled = false;
-    if (file.mime_hint === "image") {
+    if (file.mime_hint === "image" && loadThumbs) {
       invoke("get_file_preview", { fileId: file.id })
         .then((b64) => { if (!cancelled) setSrc(`data:${getMime(file.original_name)};base64,${b64}`); })
         .catch(() => {});
     }
     return () => { cancelled = true; };
-  }, [file.id, file.mime_hint, file.original_name]);
+  }, [file.id, file.mime_hint, file.original_name, loadThumbs]);
   if (src) return <img src={src} alt="" />;
   return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
 }
@@ -131,6 +131,7 @@ function CategoryPopup({ category, tags, onTagCreated, onTagDeleted, onAssign, o
 
 export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(null); // { done, total } or null
   const [selected, setSelected] = useState(new Set());
   const [tags, setTags] = useState([]);
   const [activeTag, setActiveTag] = useState("");
@@ -203,19 +204,37 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     });
   };
 
+  const BATCH_SIZE = 50;
+
   const handleAdd = async () => {
     try {
       const sel = await openDialog({ multiple: true });
-      if (sel) {
-        const paths = (Array.isArray(sel) ? sel : [sel]).map(f => f.path || f);
-        if (paths.length > 0) {
-          setLoading(true);
-          await invoke("hide_files", { paths, category });
-          onChanged();
-          setLoading(false);
-        }
+      if (!sel) return;
+      const paths = (Array.isArray(sel) ? sel : [sel]).map(f => f.path || f);
+      if (paths.length === 0) return;
+
+      setLoading(true);
+      setProgress({ done: 0, total: paths.length });
+
+      // Process in batches to keep UI responsive
+      let done = 0;
+      for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE);
+        const count = await invoke("hide_files_batch", { paths: batch, category });
+        done += count;
+        setProgress({ done, total: paths.length });
+        // Yield to UI thread between batches
+        await new Promise(r => setTimeout(r, 10));
       }
-    } catch (e) { console.error(e); setLoading(false); }
+
+      setProgress(null);
+      setLoading(false);
+      onChanged();
+    } catch (e) {
+      console.error(e);
+      setProgress(null);
+      setLoading(false);
+    }
   };
 
   const handleUnhide = async (e, id) => {
@@ -300,6 +319,21 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         )}
       </div>
 
+      {/* Progress bar */}
+      {progress && (
+        <div className="upload-progress">
+          <div className="upload-progress-bar">
+            <div
+              className="upload-progress-fill"
+              style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+            />
+          </div>
+          <span className="upload-progress-text">
+            {progress.done} / {progress.total} ({Math.round((progress.done / progress.total) * 100)}%)
+          </span>
+        </div>
+      )}
+
       {/* Search & Sort */}
       <SearchBar search={search} onSearch={setSearch} sort={sort} onSort={setSort} />
 
@@ -368,7 +402,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
                   </div>
                 </div>
                 <div className="grid-tile-thumb">
-                  <Thumbnail file={f} />
+                  <Thumbnail file={f} loadThumbs={!loading && filteredFiles.length <= 200} />
                   {f.mime_hint === "video" && <div className="grid-tile-play">▶</div>}
                 </div>
                 <div className="grid-tile-info">

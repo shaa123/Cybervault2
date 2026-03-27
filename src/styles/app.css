@@ -1306,6 +1306,42 @@
 .lock-key-fn { font-size: 18px; color: var(--text3); }
 .lock-key-enter { color: var(--cyan); }
 
+/* ─── UPLOAD PROGRESS ────────────────────────── */
+
+.upload-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.upload-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background: var(--cyan);
+  border-radius: 4px;
+  transition: width 0.2s;
+  box-shadow: 0 0 8px var(--cyan);
+}
+
+.upload-progress-text {
+  font-family: var(--font-file);
+  font-size: 13px;
+  color: var(--cyan);
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: right;
+}
+
 /* ─── SEARCH BAR ────────────────────────────── */
 
 .search-bar {
