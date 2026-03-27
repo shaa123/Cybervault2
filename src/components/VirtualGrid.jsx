@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const ICONS = { image: "◈", video: "▶", text: "✎", document: "◧" };
-const COLS = 4;
+const COLS = 5;
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + " B";
@@ -103,7 +103,7 @@ export default function VirtualGrid({
                     </div>
                     <div className="grid-tile-thumb">
                       {thumb ? (
-                        <img src={thumb} alt="" />
+                        <img src={thumb} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <span className="grid-tile-icon">
                           {ICONS[f.mime_hint] || "◧"}
