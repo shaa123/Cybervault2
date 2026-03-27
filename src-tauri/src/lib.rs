@@ -405,44 +405,65 @@ pub fn run() {
                     .status(404).body(b"File missing".to_vec()).unwrap(),
             };
 
-            // Range request support
-            if let Some(range_str) = request.headers()
+            // Max chunk size: 4MB — prevents OOM on large files
+            const MAX_CHUNK: u64 = 4 * 1024 * 1024;
+
+            use std::io::{Read as _, Seek as _, SeekFrom};
+
+            // Parse Range header if present
+            let range = request.headers()
                 .get("range")
                 .and_then(|v| v.to_str().ok())
-            {
-                if let Some((start, end)) = parse_range(range_str, file_size) {
-                    let length = end - start + 1;
-                    use std::io::{Read, Seek, SeekFrom};
-                    if let Ok(mut file) = std::fs::File::open(&file_path) {
-                        let _ = file.seek(SeekFrom::Start(start));
-                        let mut buf = vec![0u8; length as usize];
-                        let _ = file.read_exact(&mut buf);
-                        return tauri::http::Response::builder()
-                            .status(206)
-                            .header("Content-Type", mime)
-                            .header("Content-Length", length.to_string())
-                            .header("Content-Range", format!("bytes {}-{}/{}", start, end, file_size))
-                            .header("Accept-Ranges", "bytes")
-                            .body(buf)
-                            .unwrap();
-                    }
-                }
-            }
+                .and_then(|s| parse_range(s, file_size));
 
-            // Full response
-            match std::fs::read(&file_path) {
-                Ok(data) => tauri::http::Response::builder()
-                    .status(200)
-                    .header("Content-Type", mime)
-                    .header("Content-Length", data.len().to_string())
-                    .header("Accept-Ranges", "bytes")
-                    .body(data)
-                    .unwrap(),
-                Err(_) => tauri::http::Response::builder()
-                    .status(500)
-                    .body(b"Read error".to_vec())
-                    .unwrap(),
-            }
+            let (start, end) = match range {
+                Some((s, e)) => {
+                    // Clamp to MAX_CHUNK
+                    let clamped_end = s.saturating_add(MAX_CHUNK - 1).min(e);
+                    (s, clamped_end)
+                }
+                None => {
+                    if file_size <= MAX_CHUNK {
+                        // Small file — serve entirely
+                        match std::fs::read(&file_path) {
+                            Ok(data) => return tauri::http::Response::builder()
+                                .status(200)
+                                .header("Content-Type", mime)
+                                .header("Content-Length", data.len().to_string())
+                                .header("Accept-Ranges", "bytes")
+                                .body(data)
+                                .unwrap(),
+                            Err(_) => return tauri::http::Response::builder()
+                                .status(500)
+                                .body(b"Read error".to_vec())
+                                .unwrap(),
+                        }
+                    }
+                    // Large file without Range header — serve first chunk as 206
+                    // to force the browser to use Range requests for the rest
+                    (0, MAX_CHUNK - 1)
+                }
+            };
+
+            let length = end - start + 1;
+            let mut file = match std::fs::File::open(&file_path) {
+                Ok(f) => f,
+                Err(_) => return tauri::http::Response::builder()
+                    .status(500).body(b"Read error".to_vec()).unwrap(),
+            };
+            let _ = file.seek(SeekFrom::Start(start));
+            let mut buf = vec![0u8; length as usize];
+            let bytes_read = file.read(&mut buf).unwrap_or(0);
+            buf.truncate(bytes_read);
+
+            tauri::http::Response::builder()
+                .status(206)
+                .header("Content-Type", mime)
+                .header("Content-Length", bytes_read.to_string())
+                .header("Content-Range", format!("bytes {}-{}/{}", start, start + bytes_read as u64 - 1, file_size))
+                .header("Accept-Ranges", "bytes")
+                .body(buf)
+                .unwrap()
         })
         .manage(AppState {
             vault: vault_arc.clone(),
