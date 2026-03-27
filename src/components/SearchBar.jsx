@@ -1,6 +1,7 @@
 import React from "react";
 
 const SORT_OPTIONS = [
+  { id: "random", label: "RANDOM" },
   { id: "name-asc", label: "NAME A→Z" },
   { id: "name-desc", label: "NAME Z→A" },
   { id: "date-desc", label: "NEWEST" },

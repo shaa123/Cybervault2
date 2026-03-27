@@ -117,7 +117,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   const [showCatPopup, setShowCatPopup] = useState(false);
   const [catMode, setCatMode] = useState("browse");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("date-desc");
+  const [sort, setSort] = useState(
+    (category === "image" || category === "video") ? "random" : "date-desc"
+  );
   const isGridView = category === "image" || category === "video";
   const showCategories = category !== "trash";
 
@@ -147,19 +149,21 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       result = result.filter(f => f.original_name.toLowerCase().includes(q));
     }
 
-    // Sort
-    result = [...result].sort((a, b) => {
-      switch (sort) {
-        case "name-asc": return a.original_name.localeCompare(b.original_name);
-        case "name-desc": return b.original_name.localeCompare(a.original_name);
-        case "date-desc": return b.hidden_at.localeCompare(a.hidden_at);
-        case "date-asc": return a.hidden_at.localeCompare(b.hidden_at);
-        case "size-desc": return b.size - a.size;
-        case "size-asc": return a.size - b.size;
-        case "type": return a.mime_hint.localeCompare(b.mime_hint);
-        default: return 0;
-      }
-    });
+    // Sort (skip for "random" to preserve shuffle order from loadFiles)
+    if (sort !== "random") {
+      result = [...result].sort((a, b) => {
+        switch (sort) {
+          case "name-asc": return a.original_name.localeCompare(b.original_name);
+          case "name-desc": return b.original_name.localeCompare(a.original_name);
+          case "date-desc": return b.hidden_at.localeCompare(a.hidden_at);
+          case "date-asc": return a.hidden_at.localeCompare(b.hidden_at);
+          case "size-desc": return b.size - a.size;
+          case "size-asc": return a.size - b.size;
+          case "type": return a.mime_hint.localeCompare(b.mime_hint);
+          default: return 0;
+        }
+      });
+    }
 
     return result;
   }, [files, activeTag, search, sort]);
