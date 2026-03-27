@@ -268,6 +268,75 @@ impl VaultManager {
         }
     }
 
+    /// Fast batch hide — creates ONE directory, skips per-file attrib, saves index once
+    pub fn hide_files_fast(&mut self, source_paths: &[String], category: &str) -> usize {
+        // Create a single hidden directory for this batch
+        let hidden_dir = self.generate_hidden_path();
+        if fs::create_dir_all(&hidden_dir).is_err() {
+            return 0;
+        }
+
+        let now = chrono_now();
+        let mut count = 0;
+
+        for source_path in source_paths {
+            let source = Path::new(source_path);
+            if !source.exists() { continue; }
+
+            let original_name = source
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            let size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+            let mime_hint = Self::guess_mime(&original_name);
+            let cat = if category == "auto" { &mime_hint } else { category };
+
+            let fake_name = self.generate_fake_name();
+            let hidden_path = hidden_dir.join(&fake_name);
+
+            // Move or copy
+            let moved = fs::rename(source, &hidden_path).or_else(|_| {
+                fs::copy(source, &hidden_path)
+                    .and_then(|_| fs::remove_file(source))
+                    .map(|_| ())
+            });
+
+            if moved.is_err() { continue; }
+
+            let id = Uuid::new_v4().to_string();
+            self.index.entries.insert(id.clone(), VaultEntry {
+                id,
+                original_name,
+                category: cat.to_string(),
+                size,
+                hidden_at: now.clone(),
+                hidden_path: hidden_path.to_string_lossy().to_string(),
+                mime_hint,
+                original_category: None,
+                tag: String::new(),
+            });
+            count += 1;
+        }
+
+        // Set attrib on the whole directory ONCE
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            let _ = Command::new("attrib")
+                .args(["+H", "+S", "/S", "/D", &hidden_dir.to_string_lossy()])
+                .output();
+        }
+
+        if count > 0 {
+            self.log_action("BATCH_HIDE", &format!("{} files hidden to {}", count, category));
+            let _ = self.save_index();
+        }
+
+        count
+    }
+
     pub fn hide_file(&mut self, source_path: &str, category: &str) -> Result<VaultFile, String> {
         let source = Path::new(source_path);
         if !source.exists() {

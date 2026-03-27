@@ -47,13 +47,7 @@ fn hide_files(state: State<AppState>, paths: Vec<String>, category: String) -> R
 #[tauri::command]
 fn hide_files_batch(state: State<AppState>, paths: Vec<String>, category: String) -> Result<usize, String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let mut count = 0;
-    for path in paths {
-        if vault.hide_file(&path, &category).is_ok() {
-            count += 1;
-        }
-    }
-    Ok(count)
+    Ok(vault.hide_files_fast(&paths, &category))
 }
 
 #[tauri::command]
