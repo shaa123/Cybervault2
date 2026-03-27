@@ -211,31 +211,27 @@ impl VaultManager {
 
     /// Generate a small JPEG thumbnail (256px) for an image file.
     /// Returns the path to the thumbnail file, or empty string on failure.
+    /// Try to generate a thumbnail from any file. Detects format from file
+    /// header bytes, not extension (hidden files have fake extensions like .sys).
     fn generate_thumbnail(source: &Path, thumb_dir: &Path) -> String {
-        use image::GenericImageView;
+        // Read file header to detect format (don't trust extension)
+        let data = match fs::read(source) {
+            Ok(d) => d,
+            Err(_) => return String::new(),
+        };
 
-        // Only generate for image types
-        let ext = source.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+        // Try to decode as image using format detection from bytes
+        let img = match image::load_from_memory(&data) {
+            Ok(img) => img,
+            Err(_) => return String::new(),
+        };
 
-        let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp");
-        if !is_image { return String::new(); }
+        let thumb = img.thumbnail(256, 256);
+        let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
+        let thumb_path = thumb_dir.join(&thumb_name);
 
-        // Try to open and resize
-        match image::open(source) {
-            Ok(img) => {
-                let thumb = img.thumbnail(256, 256);
-                let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
-                let thumb_path = thumb_dir.join(&thumb_name);
-
-                // Save as JPEG quality 70
-                match thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg) {
-                    Ok(_) => thumb_path.to_string_lossy().to_string(),
-                    Err(_) => String::new(),
-                }
-            }
+        match thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg) {
+            Ok(_) => thumb_path.to_string_lossy().to_string(),
             Err(_) => String::new(),
         }
     }
