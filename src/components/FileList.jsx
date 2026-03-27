@@ -37,52 +37,100 @@ function Thumbnail({ file }) {
   return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
 }
 
+/* ── Category Popup (3x3 grid) ── */
+function CategoryPopup({ tags, onSelect, onCreate, onClose }) {
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (creating && inputRef.current) inputRef.current.focus();
+  }, [creating]);
+
+  const handleCreate = () => {
+    const t = newName.trim();
+    if (t) { onCreate(t); setNewName(""); setCreating(false); }
+  };
+
+  return (
+    <div className="cat-popup-overlay" onClick={onClose}>
+      <div className="cat-popup" onClick={e => e.stopPropagation()}>
+        <div className="cat-popup-title">SELECT CATEGORY</div>
+
+        {creating && (
+          <div className="cat-popup-input-row">
+            <input
+              ref={inputRef}
+              className="cat-popup-input"
+              placeholder="Category name..."
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
+            />
+            <button className="fl-btn fl-btn-primary" onClick={handleCreate}>ADD</button>
+          </div>
+        )}
+
+        <div className="cat-popup-grid">
+          {tags.map(t => (
+            <button key={t} className="cat-popup-tag" onClick={() => onSelect(t)}>
+              {t}
+            </button>
+          ))}
+          <button className="cat-popup-tag create" onClick={() => setCreating(true)}>
+            + CREATE
+          </button>
+        </div>
+
+        <div className="cat-popup-actions">
+          {tags.length > 0 && (
+            <button className="fl-btn fl-btn-muted" onClick={() => onSelect("")}>
+              CLEAR TAG
+            </button>
+          )}
+          <button className="fl-btn fl-btn-muted" onClick={onClose}>CANCEL</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [tags, setTags] = useState([]);
-  const [activeTag, setActiveTag] = useState(""); // "" = all
-  const [newTag, setNewTag] = useState("");
-  const [showTagInput, setShowTagInput] = useState(false);
-  const tagInputRef = useRef(null);
+  const [activeTag, setActiveTag] = useState("");
+  const [showCatPopup, setShowCatPopup] = useState(false);
+  const [catTarget, setCatTarget] = useState(null); // null = batch, or file id
   const isGridView = category === "image" || category === "video";
+  const showCategories = category !== "trash";
 
-  // Load tags for this category
+  // Load tags
   useEffect(() => {
-    if (category === "image" || category === "video") {
-      invoke("list_tags", { category }).then(setTags).catch(() => setTags([]));
-    } else {
-      setTags([]);
-    }
+    invoke("list_tags", { category }).then(setTags).catch(() => setTags([]));
     setActiveTag("");
     setSelected(new Set());
   }, [category, files]);
 
   // Filter files by tag
-  const filteredFiles = activeTag
+  const filteredFiles = activeTag === "__untagged"
+    ? files.filter(f => !f.tag)
+    : activeTag
     ? files.filter(f => f.tag === activeTag)
     : files;
 
-  // Ctrl+A handler
+  // Ctrl+A
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "a" && isGridView) {
         e.preventDefault();
-        if (selected.size === filteredFiles.length) {
-          setSelected(new Set());
-        } else {
-          setSelected(new Set(filteredFiles.map(f => f.id)));
-        }
+        if (selected.size === filteredFiles.length) setSelected(new Set());
+        else setSelected(new Set(filteredFiles.map(f => f.id)));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isGridView, filteredFiles, selected]);
-
-  // Focus tag input when shown
-  useEffect(() => {
-    if (showTagInput && tagInputRef.current) tagInputRef.current.focus();
-  }, [showTagInput]);
 
   const toggleSelect = (e, id) => {
     e.stopPropagation();
@@ -135,7 +183,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     catch (e) { console.error(e); }
   };
 
-  // Batch actions for selected
   const handleBatchDelete = async () => {
     if (selected.size === 0) return;
     try {
@@ -145,35 +192,52 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     } catch (e) { console.error(e); }
   };
 
-  const handleBatchTag = async (tag) => {
-    if (selected.size === 0) return;
+  // Category popup handlers
+  const openCatPopup = (target = null) => {
+    setCatTarget(target);
+    setShowCatPopup(true);
+  };
+
+  const handleCatSelect = async (tag) => {
+    setShowCatPopup(false);
     try {
-      await invoke("set_files_tag", { fileIds: [...selected], tag });
-      setSelected(new Set());
-      setShowTagInput(false);
-      setNewTag("");
+      if (catTarget) {
+        // Single file
+        await invoke("set_file_tag", { fileId: catTarget, tag });
+      } else {
+        // Batch
+        await invoke("set_files_tag", { fileIds: [...selected], tag });
+        setSelected(new Set());
+      }
       onChanged();
     } catch (e) { console.error(e); }
   };
 
-  const handleCreateTag = () => {
-    const t = newTag.trim();
-    if (t) handleBatchTag(t);
+  const handleCatCreate = async (name) => {
+    setShowCatPopup(false);
+    try {
+      if (catTarget) {
+        await invoke("set_file_tag", { fileId: catTarget, tag: name });
+      } else {
+        await invoke("set_files_tag", { fileIds: [...selected], tag: name });
+        setSelected(new Set());
+      }
+      onChanged();
+    } catch (e) { console.error(e); }
   };
 
-  const handleSingleTag = async (e, fileId, tag) => {
-    e.stopPropagation();
-    try {
-      await invoke("set_file_tag", { fileId, tag });
-      onChanged();
-    } catch (err) { console.error(err); }
-  };
+  const isMedia = (f) => f.mime_hint === "image" || f.mime_hint === "video";
 
   return (
     <div className="filelist" style={{ "--list-color": color }}>
       {/* Toolbar */}
       <div className="fl-toolbar">
         <div className="fl-title">{TITLES[category]}</div>
+        {showCategories && (
+          <button className="fl-btn fl-btn-muted" onClick={() => openCatPopup(null)}>
+            CATEGORY
+          </button>
+        )}
         {category === "note" && (
           <button className="fl-btn fl-btn-primary" onClick={() => onEditNote(null)}>+ NEW NOTE</button>
         )}
@@ -187,25 +251,21 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         )}
       </div>
 
-      {/* Tag filter bar for image/video */}
-      {isGridView && (tags.length > 0 || files.length > 0) && (
+      {/* Tag filter bar */}
+      {tags.length > 0 && (
         <div className="tag-bar">
-          <button
-            className={`tag-chip ${activeTag === "" ? "active" : ""}`}
-            onClick={() => setActiveTag("")}
-          >ALL ({files.length})</button>
+          <button className={`tag-chip ${activeTag === "" ? "active" : ""}`} onClick={() => setActiveTag("")}>
+            ALL ({files.length})
+          </button>
           {tags.map(t => (
-            <button
-              key={t}
-              className={`tag-chip ${activeTag === t ? "active" : ""}`}
-              onClick={() => setActiveTag(t)}
-            >{t} ({files.filter(f => f.tag === t).length})</button>
+            <button key={t} className={`tag-chip ${activeTag === t ? "active" : ""}`} onClick={() => setActiveTag(t)}>
+              {t} ({files.filter(f => f.tag === t).length})
+            </button>
           ))}
-          {files.some(f => !f.tag) && tags.length > 0 && (
-            <button
-              className={`tag-chip ${activeTag === "__untagged" ? "active" : ""}`}
-              onClick={() => setActiveTag("__untagged")}
-            >UNSORTED ({files.filter(f => !f.tag).length})</button>
+          {files.some(f => !f.tag) && (
+            <button className={`tag-chip ${activeTag === "__untagged" ? "active" : ""}`} onClick={() => setActiveTag("__untagged")}>
+              UNSORTED ({files.filter(f => !f.tag).length})
+            </button>
           )}
         </div>
       )}
@@ -214,27 +274,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       {selected.size > 0 && (
         <div className="select-bar">
           <span className="select-count">{selected.size} SELECTED</span>
-          <button className="fl-btn fl-btn-primary" onClick={() => setShowTagInput(!showTagInput)}>
-            TAG
-          </button>
+          <button className="fl-btn fl-btn-primary" onClick={() => openCatPopup(null)}>TAG</button>
           <button className="fl-btn fl-btn-danger" onClick={handleBatchDelete}>DELETE</button>
           <button className="fl-btn fl-btn-muted" onClick={() => setSelected(new Set())}>CANCEL</button>
-          {showTagInput && (
-            <div className="select-tag-input">
-              <input
-                ref={tagInputRef}
-                className="tag-input"
-                placeholder="New category name..."
-                value={newTag}
-                onChange={e => setNewTag(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleCreateTag(); if (e.key === "Escape") setShowTagInput(false); }}
-              />
-              <button className="fl-btn fl-btn-primary" onClick={handleCreateTag}>APPLY</button>
-              {tags.map(t => (
-                <button key={t} className="tag-chip small" onClick={() => handleBatchTag(t)}>{t}</button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -250,7 +292,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
             {activeTag ? "NO FILES IN THIS CATEGORY" : category === "trash" ? "TRASH EMPTY" : "NO FILES YET"}
           </div>
           <div className="fl-empty-sub">
-            {activeTag ? "Try selecting a different category or 'ALL'"
+            {activeTag ? "Try selecting a different category or ALL"
               : category === "note" ? "Create a note to get started"
               : category !== "trash" ? "Click + HIDE FILES to add files"
               : "Deleted files appear here"}
@@ -259,16 +301,13 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       ) : isGridView ? (
         <div className="grid-wrap">
           <div className="grid-tiles">
-            {(activeTag === "__untagged" ? files.filter(f => !f.tag) : filteredFiles).map((f) => (
+            {filteredFiles.map((f) => (
               <button
                 key={f.id}
                 className={`grid-tile ${selected.has(f.id) ? "selected" : ""}`}
                 onClick={() => {
-                  if (selected.size > 0) {
-                    toggleSelect({ stopPropagation: () => {} }, f.id);
-                  } else {
-                    onViewMedia(f);
-                  }
+                  if (selected.size > 0) toggleSelect({ stopPropagation: () => {} }, f.id);
+                  else onViewMedia(f);
                 }}
               >
                 <div className="grid-tile-select" onClick={(e) => toggleSelect(e, f.id)}>
@@ -278,9 +317,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
                 </div>
                 <div className="grid-tile-thumb">
                   <Thumbnail file={f} />
-                  {f.mime_hint === "video" && (
-                    <div className="grid-tile-play">▶</div>
-                  )}
+                  {f.mime_hint === "video" && <div className="grid-tile-play">▶</div>}
                 </div>
                 <div className="grid-tile-info">
                   <div className="grid-tile-name">{f.original_name}</div>
@@ -304,13 +341,17 @@ export default function FileList({ category, files, color, onChanged, onEditNote
               <div className="fl-row-icon">{ICONS[f.mime_hint] || "◧"}</div>
               <div className="fl-row-info">
                 <div className="fl-row-name">{f.original_name}</div>
-                <div className="fl-row-meta">{formatSize(f.size)} · {f.hidden_at}</div>
+                <div className="fl-row-meta">
+                  {formatSize(f.size)} · {f.hidden_at}
+                  {f.tag && <span className="grid-tile-tag">{f.tag}</span>}
+                </div>
               </div>
               <div className="fl-row-actions" onClick={e => e.stopPropagation()}>
                 {category === "trash" ? (
                   <button className="fl-row-btn restore" onClick={() => handleRestore(f.id)}>RESTORE</button>
                 ) : (
                   <>
+                    <button className="fl-row-btn view" onClick={() => openCatPopup(f.id)}>TAG</button>
                     {category === "note" && (
                       <button className="fl-row-btn edit" onClick={() => onEditNote(f)}>EDIT</button>
                     )}
@@ -322,6 +363,16 @@ export default function FileList({ category, files, color, onChanged, onEditNote
             </div>
           ))}
         </div>
+      )}
+
+      {/* Category popup */}
+      {showCatPopup && (
+        <CategoryPopup
+          tags={tags}
+          onSelect={handleCatSelect}
+          onCreate={handleCatCreate}
+          onClose={() => setShowCatPopup(false)}
+        />
       )}
     </div>
   );

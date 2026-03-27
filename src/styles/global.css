@@ -6,6 +6,8 @@
   font-display: swap;
 }
 
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap');
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -31,6 +33,7 @@
   --text3: #5a5a72;
   --text4: #35354a;
   --font: 'Corptic', 'Segoe UI', 'Inter', system-ui, sans-serif;
+  --font-file: 'Noto Sans', 'Segoe UI', 'Inter', system-ui, sans-serif;
   --mono: 'Corptic', 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 16px;
 }

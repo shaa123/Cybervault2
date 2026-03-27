@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import React from "react";
 
 const CARDS = [
   { id: "image", label: "IMAGES", icon: "◈", color: "#00e5ff", stat: "images" },
@@ -10,17 +9,6 @@ const CARDS = [
 ];
 
 export default function Dashboard({ stats, onOpenCategory }) {
-  const [debugText, setDebugText] = useState(null);
-
-  const showDebug = async () => {
-    try {
-      const info = await invoke("debug_info");
-      setDebugText(info);
-    } catch (e) {
-      setDebugText("Error: " + e);
-    }
-  };
-
   return (
     <div className="dashboard">
       <div className="dash-header">
@@ -45,31 +33,6 @@ export default function Dashboard({ stats, onOpenCategory }) {
           </button>
         ))}
       </div>
-
-      <div className="dash-status">
-        <div className="dash-status-item">
-          <div className="dash-status-dot" />
-          <span className="dash-status-text">DEEP-ROOT OBFUSCATION ACTIVE</span>
-        </div>
-        <div className="dash-status-item">
-          <div className="dash-status-dot" />
-          <span className="dash-status-text">ANTI-DETECTION ENABLED</span>
-        </div>
-        <div className="dash-status-item" onClick={showDebug} style={{ cursor: "pointer" }}>
-          <div className="dash-status-dot" />
-          <span className="dash-status-text">{stats.total_files} FILES SECURED</span>
-        </div>
-      </div>
-
-      {debugText && (
-        <pre style={{
-          marginTop: 12, padding: 14, background: "#111118", border: "1px solid #1a1a2e",
-          borderRadius: 8, fontSize: "0.75rem", color: "#00e5ff", whiteSpace: "pre-wrap",
-          fontFamily: "var(--mono)", lineHeight: 1.6
-        }}>
-          {debugText}
-        </pre>
-      )}
     </div>
   );
 }
