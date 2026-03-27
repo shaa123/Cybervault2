@@ -91,6 +91,7 @@ export function useThumbnails(settings = {}) {
   const cacheRef = useRef(new Map()); // id -> { url, lastAccess }
   const lruRef = useRef([]);
   const pendingRef = useRef(new Set());
+  const noThumbRef = useRef(new Set()); // IDs that have no thumbnail — don't retry
   const batchRef = useRef(new Map());
   const lastGenTime = useRef(0);
   const [, forceUpdate] = useState(0);
@@ -125,14 +126,23 @@ export function useThumbnails(settings = {}) {
   // ── Load thumbnail ────────────────────────────
   const loadThumb = useCallback((file) => {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
+    if (noThumbRef.current.has(file.id)) return; // Already know no thumb exists
     pendingRef.current.add(file.id);
 
-    // vault://thumb/ generates on-the-fly if no pre-generated thumb exists
-    // First request ~50ms (generates), subsequent ~2ms (cached on disk)
+    // Only add URL if thumb exists — use Image to verify
     const url = vaultThumbUrl(file.id);
-    batchRef.current.set(file.id, url);
-    pendingRef.current.delete(file.id);
-    scheduleFlush();
+    const img = new Image();
+    img.onload = () => {
+      batchRef.current.set(file.id, url);
+      pendingRef.current.delete(file.id);
+      scheduleFlush();
+    };
+    img.onerror = () => {
+      // No thumb available — mark so we don't retry
+      noThumbRef.current.add(file.id);
+      pendingRef.current.delete(file.id);
+    };
+    img.src = url;
   }, [scheduleFlush]);
 
   // ── Generate thumbnails for visible files ─────
@@ -175,6 +185,7 @@ export function useThumbnails(settings = {}) {
     cacheRef.current.clear();
     lruRef.current = [];
     pendingRef.current.clear();
+    noThumbRef.current.clear();
     batchRef.current.clear();
     dbClear();
     forceUpdate(n => n + 1);

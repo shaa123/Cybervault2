@@ -351,7 +351,7 @@ pub fn run() {
             let file_id = file_id_raw.split('?').next().unwrap_or(file_id_raw);
 
             // Lock mutex briefly to get paths
-            let (thumb_path_result, hidden_path, original_name, vault_root) = {
+            let (thumb_path_result, hidden_path, original_name) = {
                 let v = match vault_for_protocol.lock() {
                     Ok(v) => v,
                     Err(_) => {
@@ -364,8 +364,7 @@ pub fn run() {
                 let tp = if kind == "thumb" { v.get_thumb_file_path(file_id).ok() } else { None };
                 let hp = v.get_file_path(file_id).ok();
                 let name = v.get_original_name(file_id).unwrap_or_default();
-                let root = v.vault_root_path().to_path_buf();
-                (tp, hp, name, root)
+                (tp, hp, name)
             };
 
             let file_path;
@@ -383,30 +382,20 @@ pub fn run() {
                     || name_lower.ends_with(".mp4");
 
                 if is_animated {
+                    // Animated formats: serve original file
                     file_path = match hidden_path {
                         Some(p) => p,
                         None => return tauri::http::Response::builder()
                             .status(404).body(b"Not found".to_vec()).unwrap(),
                     };
                 } else if let Some(tp) = thumb_path_result {
+                    // Pre-generated thumb exists — serve it
                     file_path = tp;
-                } else if let Some(hp) = hidden_path {
-                    let thumb_dir = vault_root.join(".thumbs");
-                    let _ = std::fs::create_dir_all(&thumb_dir);
-                    let generated = vault::VaultManager::generate_thumbnail_static(
-                        std::path::Path::new(&hp), &thumb_dir
-                    );
-                    if generated.is_empty() {
-                        file_path = hp;
-                    } else {
-                        if let Ok(mut v) = vault_for_protocol.lock() {
-                            let _ = v.set_thumb_path(file_id, &generated);
-                        }
-                        file_path = generated;
-                    }
                 } else {
+                    // No thumb yet — return 404, frontend shows icon
+                    // Use Settings → Tools → Cache All Thumbnails to generate
                     return tauri::http::Response::builder()
-                        .status(404).body(b"Not found".to_vec()).unwrap();
+                        .status(404).body(b"No thumbnail".to_vec()).unwrap();
                 }
             };
 
