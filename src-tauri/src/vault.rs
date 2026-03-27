@@ -741,6 +741,51 @@ impl VaultManager {
         fs::read_to_string(&entry.hidden_path).map_err(|e| e.to_string())
     }
 
+    /// Generate thumbnails for all image entries that don't have one yet.
+    /// Uses hidden_path as source (ignores fake extension, checks mime_hint).
+    pub fn regenerate_thumbnails(&mut self) -> usize {
+        let thumb_dir = self.vault_root.join(".thumbs");
+        let _ = fs::create_dir_all(&thumb_dir);
+
+        let mut count = 0;
+        let ids: Vec<String> = self.index.entries.keys().cloned().collect();
+
+        for id in ids {
+            let needs_thumb = {
+                let entry = &self.index.entries[&id];
+                entry.thumb_path.is_empty() && entry.mime_hint == "image"
+            };
+
+            if needs_thumb {
+                let hidden_path = self.index.entries[&id].hidden_path.clone();
+                let source = Path::new(&hidden_path);
+                if source.exists() {
+                    // Force open as image regardless of fake extension
+                    match image::open(source) {
+                        Ok(img) => {
+                            let thumb = img.thumbnail(256, 256);
+                            let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
+                            let thumb_path = thumb_dir.join(&thumb_name);
+                            if thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg).is_ok() {
+                                self.index.entries.get_mut(&id).unwrap().thumb_path =
+                                    thumb_path.to_string_lossy().to_string();
+                                count += 1;
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+            }
+        }
+
+        if count > 0 {
+            self.log_action("THUMBNAILS_GENERATED", &format!("{} thumbnails created", count));
+            let _ = self.save_index();
+        }
+
+        count
+    }
+
     pub fn debug_info(&self) -> String {
         let vault_exists = self.vault_root.exists();
         let index_exists = self.index_path.exists();

@@ -97,7 +97,11 @@ export default function App() {
     try { setFiles(await invoke("list_files", { category })); } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { refreshStats(); }, [refreshStats]);
+  useEffect(() => {
+    refreshStats();
+    // Generate thumbnails for any images that don't have them yet
+    invoke("regenerate_thumbnails").catch(() => {});
+  }, [refreshStats]);
 
   useEffect(() => {
     if (tab !== "home" && tab !== "settings") {

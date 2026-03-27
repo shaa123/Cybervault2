@@ -189,6 +189,12 @@ fn has_thumbnail(state: State<AppState>, file_id: String) -> Result<bool, String
 }
 
 #[tauri::command]
+fn regenerate_thumbnails(state: State<AppState>) -> Result<usize, String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.regenerate_thumbnails())
+}
+
+#[tauri::command]
 fn debug_info(state: State<AppState>) -> Result<String, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     Ok(vault.debug_info())
@@ -439,6 +445,7 @@ pub fn run() {
             delete_files,
             get_thumbnail,
             has_thumbnail,
+            regenerate_thumbnails,
             debug_info,
             set_pin,
             verify_pin,
