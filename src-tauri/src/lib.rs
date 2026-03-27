@@ -328,202 +328,138 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .register_asynchronous_uri_scheme_protocol("vault", move |_ctx, request, responder| {
-            let vault = vault_for_protocol.clone();
-            std::thread::spawn(move || {
-                let uri = request.uri().to_string();
-                // On Windows: http://vault.localhost/file/{id}
-                // On macOS/Linux: vault://localhost/file/{id}
-                let path = uri.strip_prefix("http://vault.localhost/")
-                    .or_else(|| uri.strip_prefix("https://vault.localhost/"))
-                    .or_else(|| uri.strip_prefix("vault://localhost/"))
-                    .or_else(|| uri.strip_prefix("vault:///"))
-                    .or_else(|| uri.strip_prefix("vault://"))
-                    .unwrap_or("");
+        .register_uri_scheme_protocol("vault", move |_ctx, request| {
+            let uri = request.uri().to_string();
+            let path = uri.strip_prefix("http://vault.localhost/")
+                .or_else(|| uri.strip_prefix("https://vault.localhost/"))
+                .or_else(|| uri.strip_prefix("vault://localhost/"))
+                .or_else(|| uri.strip_prefix("vault:///"))
+                .or_else(|| uri.strip_prefix("vault://"))
+                .unwrap_or("");
 
-                let (kind, file_id_raw) = if let Some(id) = path.strip_prefix("file/") {
-                    ("file", id)
-                } else if let Some(id) = path.strip_prefix("thumb/") {
-                    ("thumb", id)
-                } else {
-                    responder.respond(
-                        tauri::http::Response::builder()
-                            .status(404)
-                            .body(b"Not found".to_vec())
-                            .unwrap()
-                    );
-                    return;
+            let (kind, file_id_raw) = if let Some(id) = path.strip_prefix("file/") {
+                ("file", id)
+            } else if let Some(id) = path.strip_prefix("thumb/") {
+                ("thumb", id)
+            } else {
+                return tauri::http::Response::builder()
+                    .status(404)
+                    .body(b"Not found".to_vec())
+                    .unwrap();
+            };
+
+            let file_id = file_id_raw.split('?').next().unwrap_or(file_id_raw);
+
+            // Lock mutex briefly to get paths
+            let (thumb_path_result, hidden_path, original_name, vault_root) = {
+                let v = match vault_for_protocol.lock() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return tauri::http::Response::builder()
+                            .status(500)
+                            .body(b"Lock failed".to_vec())
+                            .unwrap();
+                    }
                 };
+                let tp = if kind == "thumb" { v.get_thumb_file_path(file_id).ok() } else { None };
+                let hp = v.get_file_path(file_id).ok();
+                let name = v.get_original_name(file_id).unwrap_or_default();
+                let root = v.vault_root_path().to_path_buf();
+                (tp, hp, name, root)
+            };
 
-                // Strip query string if present
-                let file_id = file_id_raw.split('?').next().unwrap_or(file_id_raw);
+            let file_path;
+            let mut is_animated = false;
 
-                // Lock mutex BRIEFLY to get paths only, then release
-                let (thumb_path_result, hidden_path, original_name, vault_root) = {
-                    let v = match vault.lock() {
-                        Ok(v) => v,
-                        Err(_) => {
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(500)
-                                    .body(b"Lock failed".to_vec())
-                                    .unwrap()
-                            );
-                            return;
-                        }
-                    };
-                    let tp = if kind == "thumb" { v.get_thumb_file_path(file_id).ok() } else { None };
-                    let hp = v.get_file_path(file_id).ok();
-                    let name = v.get_original_name(file_id).unwrap_or_default();
-                    let root = v.vault_root_path().to_path_buf();
-                    (tp, hp, name, root)
-                }; // Mutex released immediately
+            if kind == "file" {
+                file_path = match hidden_path {
+                    Some(p) => p,
+                    None => return tauri::http::Response::builder()
+                        .status(404).body(b"Not found".to_vec()).unwrap(),
+                };
+            } else {
+                let name_lower = original_name.to_lowercase();
+                is_animated = name_lower.ends_with(".gif") || name_lower.ends_with(".webm")
+                    || name_lower.ends_with(".mp4");
 
-                let file_path;
-                let mut is_animated = false;
-
-                if kind == "file" {
+                if is_animated {
                     file_path = match hidden_path {
                         Some(p) => p,
-                        None => {
-                            responder.respond(
-                                tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
-                            );
-                            return;
-                        }
+                        None => return tauri::http::Response::builder()
+                            .status(404).body(b"Not found".to_vec()).unwrap(),
                     };
-                } else {
-                    // Thumb request
-                    let name_lower = original_name.to_lowercase();
-                    is_animated = name_lower.ends_with(".gif") || name_lower.ends_with(".webm")
-                        || name_lower.ends_with(".mp4");
-
-                    if is_animated {
-                        // Animated formats: serve the original file directly (no static thumb)
-                        file_path = match hidden_path {
-                            Some(p) => p,
-                            None => {
-                                responder.respond(
-                                    tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
-                                );
-                                return;
-                            }
-                        };
-                    } else if let Some(tp) = thumb_path_result {
-                        // Existing thumb
-                        file_path = tp;
-                    } else if let Some(hp) = hidden_path {
-                        // No thumb — generate OUTSIDE the mutex lock
-                        let thumb_dir = vault_root.join(".thumbs");
-                        let _ = std::fs::create_dir_all(&thumb_dir);
-
-                        let generated = vault::VaultManager::generate_thumbnail_static(
-                            std::path::Path::new(&hp), &thumb_dir
-                        );
-
-                        if generated.is_empty() {
-                            // Can't generate (not an image) — serve original
-                            file_path = hp;
-                        } else {
-                            // Save thumb path back to index (brief lock)
-                            if let Ok(mut v) = vault.lock() {
-                                let _ = v.set_thumb_path(file_id, &generated);
-                            }
-                            file_path = generated;
-                        }
+                } else if let Some(tp) = thumb_path_result {
+                    file_path = tp;
+                } else if let Some(hp) = hidden_path {
+                    let thumb_dir = vault_root.join(".thumbs");
+                    let _ = std::fs::create_dir_all(&thumb_dir);
+                    let generated = vault::VaultManager::generate_thumbnail_static(
+                        std::path::Path::new(&hp), &thumb_dir
+                    );
+                    if generated.is_empty() {
+                        file_path = hp;
                     } else {
-                        responder.respond(
-                            tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
-                        );
-                        return;
+                        if let Ok(mut v) = vault_for_protocol.lock() {
+                            let _ = v.set_thumb_path(file_id, &generated);
+                        }
+                        file_path = generated;
                     }
-                };
-
-                let mime = if kind == "thumb" && !is_animated {
-                    "image/jpeg"
                 } else {
-                    guess_mime_type(&original_name)
-                };
+                    return tauri::http::Response::builder()
+                        .status(404).body(b"Not found".to_vec()).unwrap();
+                }
+            };
 
-                let file_size = match std::fs::metadata(&file_path) {
-                    Ok(m) => m.len(),
-                    Err(_) => {
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(404)
-                                .body(b"File missing on disk".to_vec())
-                                .unwrap()
-                        );
-                        return;
-                    }
-                };
+            let mime = if kind == "thumb" && !is_animated {
+                "image/jpeg"
+            } else {
+                guess_mime_type(&original_name)
+            };
 
-                // Check for Range header
-                let range_header = request.headers()
-                    .get("range")
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from);
+            let file_size = match std::fs::metadata(&file_path) {
+                Ok(m) => m.len(),
+                Err(_) => return tauri::http::Response::builder()
+                    .status(404).body(b"File missing".to_vec()).unwrap(),
+            };
 
-                if let Some(ref range_str) = range_header {
-                    if let Some((start, end)) = parse_range(range_str, file_size) {
-                        let length = end - start + 1;
-                        use std::io::{Read, Seek, SeekFrom};
-                        let mut file = match std::fs::File::open(&file_path) {
-                            Ok(f) => f,
-                            Err(_) => {
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(500)
-                                        .body(b"Read error".to_vec())
-                                        .unwrap()
-                                );
-                                return;
-                            }
-                        };
+            // Range request support
+            if let Some(range_str) = request.headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+            {
+                if let Some((start, end)) = parse_range(range_str, file_size) {
+                    let length = end - start + 1;
+                    use std::io::{Read, Seek, SeekFrom};
+                    if let Ok(mut file) = std::fs::File::open(&file_path) {
                         let _ = file.seek(SeekFrom::Start(start));
                         let mut buf = vec![0u8; length as usize];
                         let _ = file.read_exact(&mut buf);
-
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(206)
-                                .header("Content-Type", mime)
-                                .header("Content-Length", length.to_string())
-                                .header("Content-Range", format!("bytes {}-{}/{}", start, end, file_size))
-                                .header("Accept-Ranges", "bytes")
-                                .header("Access-Control-Allow-Origin", "*")
-                                .body(buf)
-                                .unwrap()
-                        );
-                        return;
+                        return tauri::http::Response::builder()
+                            .status(206)
+                            .header("Content-Type", mime)
+                            .header("Content-Length", length.to_string())
+                            .header("Content-Range", format!("bytes {}-{}/{}", start, end, file_size))
+                            .header("Accept-Ranges", "bytes")
+                            .body(buf)
+                            .unwrap();
                     }
                 }
+            }
 
-                // Full response
-                let data = match std::fs::read(&file_path) {
-                    Ok(d) => d,
-                    Err(_) => {
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(500)
-                                .body(b"Read error".to_vec())
-                                .unwrap()
-                        );
-                        return;
-                    }
-                };
-
-                responder.respond(
-                    tauri::http::Response::builder()
-                        .status(200)
-                        .header("Content-Type", mime)
-                        .header("Content-Length", data.len().to_string())
-                        .header("Accept-Ranges", "bytes")
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(data)
-                        .unwrap()
-                );
-            });
+            // Full response
+            match std::fs::read(&file_path) {
+                Ok(data) => tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", mime)
+                    .header("Content-Length", data.len().to_string())
+                    .header("Accept-Ranges", "bytes")
+                    .body(data)
+                    .unwrap(),
+                Err(_) => tauri::http::Response::builder()
+                    .status(500)
+                    .body(b"Read error".to_vec())
+                    .unwrap(),
+            }
         })
         .manage(AppState {
             vault: vault_arc.clone(),
