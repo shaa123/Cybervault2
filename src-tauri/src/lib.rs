@@ -195,19 +195,17 @@ fn has_thumbnail(state: State<AppState>, file_id: String) -> Result<bool, String
 }
 
 /// Generate thumbnails for a batch of files that don't have them.
-/// Returns how many were generated. Call repeatedly until it returns 0.
+/// Processes in parallel using threads. Returns how many were generated.
 #[tauri::command]
 fn generate_thumbs_batch(state: State<AppState>, batch_size: usize) -> Result<usize, String> {
-    // Get list of files needing thumbs (brief lock)
     let missing: Vec<(String, String)> = {
         let vault = state.vault.lock().map_err(|e| e.to_string())?;
         let all = vault.get_missing_thumb_ids();
         all.into_iter().take(batch_size).collect()
-    }; // Lock released
+    };
 
     if missing.is_empty() { return Ok(0); }
 
-    // Get vault root for thumb dir (brief lock)
     let vault_root = {
         let vault = state.vault.lock().map_err(|e| e.to_string())?;
         vault.vault_root_path().to_path_buf()
@@ -216,19 +214,38 @@ fn generate_thumbs_batch(state: State<AppState>, batch_size: usize) -> Result<us
     let thumb_dir = vault_root.join(".thumbs");
     let _ = std::fs::create_dir_all(&thumb_dir);
 
-    let mut generated = 0;
-    for (file_id, hidden_path) in &missing {
-        let thumb = vault::VaultManager::generate_thumbnail_static(
-            std::path::Path::new(hidden_path), &thumb_dir
-        );
-        if !thumb.is_empty() {
-            // Brief lock to save thumb path
-            if let Ok(mut vault) = state.vault.lock() {
-                let _ = vault.set_thumb_path(file_id, &thumb);
+    // Process in parallel threads
+    let thumb_dir = Arc::new(thumb_dir);
+    let handles: Vec<_> = missing.into_iter().map(|(file_id, hidden_path)| {
+        let td = thumb_dir.clone();
+        std::thread::spawn(move || {
+            let thumb = vault::VaultManager::generate_thumbnail_static(
+                std::path::Path::new(&hidden_path), &td
+            );
+            if !thumb.is_empty() {
+                Some((file_id, thumb))
+            } else {
+                None
             }
-            generated += 1;
+        })
+    }).collect();
+
+    // Collect results
+    let results: Vec<(String, String)> = handles.into_iter()
+        .filter_map(|h| h.join().ok().flatten())
+        .collect();
+
+    let generated = results.len();
+
+    // Single lock to save all thumb paths at once
+    if generated > 0 {
+        if let Ok(mut vault) = state.vault.lock() {
+            for (file_id, thumb) in &results {
+                let _ = vault.set_thumb_path(file_id, thumb);
+            }
         }
     }
+
     Ok(generated)
 }
 

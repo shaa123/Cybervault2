@@ -127,7 +127,7 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     // Process in batches of 5
     while (cachingRef.current) {
       try {
-        const generated = await invoke("generate_thumbs_batch", { batchSize: 5 });
+        const generated = await invoke("generate_thumbs_batch", { batchSize: 20 });
         if (generated === 0) {
           // All done
           setCacheProgress({ done: totalImages, total: totalImages });
@@ -135,8 +135,8 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         }
         done += generated;
         setCacheProgress({ done: Math.min(done, totalImages), total: totalImages });
-        // Yield to keep UI responsive
-        await new Promise(r => setTimeout(r, 50));
+        // Brief yield between batches
+        await new Promise(r => setTimeout(r, 10));
       } catch (e) {
         console.error("Cache batch error:", e);
         break;
