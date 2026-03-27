@@ -1,46 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { vaultFileUrl } from "../hooks/useThumbnails";
 
 export default function MediaViewer({ file, files, onClose, onNavigate }) {
-  const [src, setSrc] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [slideshow, setSlideshow] = useState(false);
   const [slideshowInterval, setSlideshowInterval] = useState(3);
   const timerRef = useRef(null);
 
   const isImage = file?.mime_hint === "image";
   const isVideo = file?.mime_hint === "video";
-
-  const loadPreview = useCallback(async () => {
-    if (!file) return;
-    setLoading(true);
-    setSrc(null);
-    try {
-      const b64 = await invoke("get_file_preview", { fileId: file.id });
-      const name = file.original_name.toLowerCase();
-      let mime = "application/octet-stream";
-      if (isImage) {
-        if (name.endsWith(".png")) mime = "image/png";
-        else if (name.endsWith(".gif")) mime = "image/gif";
-        else if (name.endsWith(".webp")) mime = "image/webp";
-        else if (name.endsWith(".svg")) mime = "image/svg+xml";
-        else if (name.endsWith(".bmp")) mime = "image/bmp";
-        else mime = "image/jpeg";
-      } else if (isVideo) {
-        if (name.endsWith(".webm")) mime = "video/webm";
-        else if (name.endsWith(".mkv")) mime = "video/x-matroska";
-        else if (name.endsWith(".avi")) mime = "video/x-msvideo";
-        else if (name.endsWith(".mov")) mime = "video/quicktime";
-        else mime = "video/mp4";
-      }
-      setSrc(`data:${mime};base64,${b64}`);
-    } catch (e) {
-      console.error("Failed to load preview:", e);
-    }
-    setLoading(false);
-  }, [file, isImage, isVideo]);
-
-  useEffect(() => { loadPreview(); }, [loadPreview]);
+  const src = file ? vaultFileUrl(file.id) : null;
 
   // Keyboard
   useEffect(() => {
@@ -58,19 +26,14 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
   // Slideshow timer
   useEffect(() => {
     if (slideshow) {
-      timerRef.current = setInterval(() => {
-        onNavigate(1);
-      }, slideshowInterval * 1000);
+      timerRef.current = setInterval(() => onNavigate(1), slideshowInterval * 1000);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [slideshow, slideshowInterval, onNavigate]);
 
   const toggleFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      document.documentElement.requestFullscreen();
-    }
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
   };
 
   if (!file) return null;
@@ -97,9 +60,7 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
       )}
 
       <div onClick={e => e.stopPropagation()}>
-        {loading ? (
-          <div style={{ color: "var(--text3)", fontSize: 16, letterSpacing: 2 }}>LOADING...</div>
-        ) : src && isImage ? (
+        {src && isImage ? (
           <img src={src} alt={file.original_name} />
         ) : src && isVideo ? (
           <video src={src} controls autoPlay />
@@ -108,7 +69,6 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
         )}
       </div>
 
-      {/* Slideshow controls */}
       {total > 1 && (
         <div className="slideshow-bar" onClick={e => e.stopPropagation()}>
           <button onClick={() => setSlideshow(p => !p)} className={slideshow ? "active" : ""}>

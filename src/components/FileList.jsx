@@ -15,30 +15,7 @@ function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(2) + " GB";
 }
 
-function getMime(name) {
-  const n = name.toLowerCase();
-  if (n.endsWith(".png")) return "image/png";
-  if (n.endsWith(".gif")) return "image/gif";
-  if (n.endsWith(".webp")) return "image/webp";
-  if (n.endsWith(".svg")) return "image/svg+xml";
-  if (n.endsWith(".bmp")) return "image/bmp";
-  return "image/jpeg";
-}
-
-function Thumbnail({ file, loadThumbs }) {
-  const [src, setSrc] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (file.mime_hint === "image" && loadThumbs) {
-      invoke("get_file_preview", { fileId: file.id })
-        .then((b64) => { if (!cancelled) setSrc(`data:${getMime(file.original_name)};base64,${b64}`); })
-        .catch(() => {});
-    }
-    return () => { cancelled = true; };
-  }, [file.id, file.mime_hint, file.original_name, loadThumbs]);
-  if (src) return <img src={src} alt="" />;
-  return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
-}
+// Grid uses VirtualGrid + vault:// protocol for thumbnails
 
 /* ── Category Popup ── */
 function CategoryPopup({ category, tags, onTagCreated, onTagDeleted, onAssign, onClose, mode }) {

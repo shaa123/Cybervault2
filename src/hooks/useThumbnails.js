@@ -1,15 +1,14 @@
 /**
  * CyberVault Thumbnail Engine
- * - Lazy viewport-only generation
+ * - Uses vault://localhost/thumb/{id} protocol URLs (no base64, no invoke)
  * - LRU eviction with configurable max
- * - IndexedDB persistence
+ * - IndexedDB persistence for URL mapping
  * - Serial video queue with canvas frame extraction
  * - Batched React state updates via requestAnimationFrame
  * - Cooldown/throttling between generations
  */
 
 import { useRef, useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 
 const DB_NAME = "cybervault_thumbnails";
 const DB_STORE = "thumbs";
@@ -58,26 +57,6 @@ async function dbClear() {
   } catch { /* ignore */ }
 }
 
-// ── MIME helper ─────────────────────────────────
-function getMime(name) {
-  const n = name.toLowerCase();
-  if (n.endsWith(".png")) return "image/png";
-  if (n.endsWith(".gif")) return "image/gif";
-  if (n.endsWith(".webp")) return "image/webp";
-  if (n.endsWith(".svg")) return "image/svg+xml";
-  if (n.endsWith(".bmp")) return "image/bmp";
-  return "image/jpeg";
-}
-
-function getVideoMime(name) {
-  const n = name.toLowerCase();
-  if (n.endsWith(".webm")) return "video/webm";
-  if (n.endsWith(".mkv")) return "video/x-matroska";
-  if (n.endsWith(".avi")) return "video/x-msvideo";
-  if (n.endsWith(".mov")) return "video/quicktime";
-  return "video/mp4";
-}
-
 // ── Default settings ────────────────────────────
 export const THUMB_DEFAULTS = {
   resolution: 256,
@@ -88,15 +67,22 @@ export const THUMB_DEFAULTS = {
   cacheAll: false,
 };
 
+// ── URL helpers ─────────────────────────────────
+export function vaultFileUrl(fileId) {
+  return `vault://localhost/file/${fileId}`;
+}
+
+export function vaultThumbUrl(fileId) {
+  return `vault://localhost/thumb/${fileId}`;
+}
+
 // ── Main hook ───────────────────────────────────
 export function useThumbnails(settings = {}) {
   const config = { ...THUMB_DEFAULTS, ...settings };
   const cacheRef = useRef(new Map()); // id -> { url, lastAccess }
-  const lruRef = useRef([]);          // ordered list of ids
+  const lruRef = useRef([]);
   const pendingRef = useRef(new Set());
-  const batchRef = useRef(new Map()); // id -> url (pending flush)
-  const videoQueueRef = useRef([]);
-  const videoProcessing = useRef(false);
+  const batchRef = useRef(new Map());
   const lastGenTime = useRef(0);
   const [, forceUpdate] = useState(0);
 
@@ -108,7 +94,6 @@ export function useThumbnails(settings = {}) {
 
     for (const [id, url] of entries) {
       cacheRef.current.set(id, { url, lastAccess: Date.now() });
-      // Update LRU
       lruRef.current = lruRef.current.filter(x => x !== id);
       lruRef.current.push(id);
     }
@@ -117,10 +102,6 @@ export function useThumbnails(settings = {}) {
     if (!config.cacheAll) {
       while (lruRef.current.length > config.maxThumbnails) {
         const evictId = lruRef.current.shift();
-        const entry = cacheRef.current.get(evictId);
-        if (entry?.url?.startsWith("blob:")) {
-          URL.revokeObjectURL(entry.url);
-        }
         cacheRef.current.delete(evictId);
       }
     }
@@ -128,138 +109,30 @@ export function useThumbnails(settings = {}) {
     forceUpdate(n => n + 1);
   }, [config.maxThumbnails, config.cacheAll]);
 
-  // Schedule flush via rAF
   const scheduleFlush = useCallback(() => {
     requestAnimationFrame(flushBatch);
   }, [flushBatch]);
 
-  // ── Image thumbnail ───────────────────────────
-  const loadImageThumb = useCallback(async (file) => {
+  // ── Load thumbnail ────────────────────────────
+  const loadThumb = useCallback(async (file) => {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
     pendingRef.current.add(file.id);
 
-    // Check IndexedDB cache first
-    const cached = await dbGet(file.id);
-    if (cached) {
-      batchRef.current.set(file.id, cached);
-      pendingRef.current.delete(file.id);
-      scheduleFlush();
-      return;
-    }
+    // For images: use vault://localhost/thumb/{id} directly (pre-generated JPEG)
+    // For videos: use vault://localhost/thumb/{id} if available, else show icon
+    const url = vaultThumbUrl(file.id);
 
+    // Verify the thumb exists by trying to fetch it
     try {
-      // Try pre-generated thumbnail first (small JPEG, ~5-15KB)
-      let thumbUrl = null;
-      try {
-        const b64 = await invoke("get_thumbnail", { fileId: file.id });
-        thumbUrl = `data:image/jpeg;base64,${b64}`;
-      } catch {
-        // No pre-generated thumb — fall back to full file + resize
-        const b64 = await invoke("get_file_preview", { fileId: file.id });
-        const mime = getMime(file.original_name);
-        const url = `data:${mime};base64,${b64}`;
-
-        const img = new Image();
-        img.src = url;
-        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
-
-        const canvas = document.createElement("canvas");
-        const size = config.resolution;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext("2d");
-        const scale = Math.max(size / img.width, size / img.height);
-        const w = img.width * scale;
-        const h = img.height * scale;
-        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-        thumbUrl = canvas.toDataURL("image/webp", 0.7);
-      }
-
-      if (thumbUrl) {
-        await dbPut(file.id, thumbUrl);
-        batchRef.current.set(file.id, thumbUrl);
+      const res = await fetch(url, { method: "HEAD" });
+      if (res.ok) {
+        batchRef.current.set(file.id, url);
         scheduleFlush();
       }
-    } catch { /* ignore */ }
+    } catch { /* no thumb available, show icon */ }
 
     pendingRef.current.delete(file.id);
-  }, [config.resolution, scheduleFlush]);
-
-  // ── Video thumbnail (serial queue) ────────────
-  const processVideoQueue = useCallback(async () => {
-    if (videoProcessing.current || videoQueueRef.current.length === 0) return;
-    videoProcessing.current = true;
-
-    while (videoQueueRef.current.length > 0) {
-      const file = videoQueueRef.current.shift();
-      if (cacheRef.current.has(file.id)) continue;
-
-      // Check IndexedDB
-      const cached = await dbGet(file.id);
-      if (cached) {
-        batchRef.current.set(file.id, cached);
-        scheduleFlush();
-        continue;
-      }
-
-      try {
-        const b64 = await invoke("get_file_preview", { fileId: file.id });
-        const mime = getVideoMime(file.original_name);
-        const blob = await fetch(`data:${mime};base64,${b64}`).then(r => r.blob());
-        const videoUrl = URL.createObjectURL(blob);
-
-        const thumbUrl = await new Promise((resolve) => {
-          const video = document.createElement("video");
-          video.muted = true;
-          video.preload = "auto";
-          video.src = videoUrl;
-
-          const timeout = setTimeout(() => {
-            URL.revokeObjectURL(videoUrl);
-            resolve(null);
-          }, 15000);
-
-          video.onloadeddata = () => {
-            video.currentTime = 0.5;
-          };
-          video.onseeked = () => {
-            clearTimeout(timeout);
-            const canvas = document.createElement("canvas");
-            const size = config.resolution;
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext("2d");
-            const scale = Math.max(size / video.videoWidth, size / video.videoHeight);
-            const w = video.videoWidth * scale;
-            const h = video.videoHeight * scale;
-            ctx.drawImage(video, (size - w) / 2, (size - h) / 2, w, h);
-            URL.revokeObjectURL(videoUrl);
-            resolve(canvas.toDataURL("image/webp", 0.7));
-          };
-          video.onerror = () => {
-            clearTimeout(timeout);
-            URL.revokeObjectURL(videoUrl);
-            resolve(null);
-          };
-        });
-
-        if (thumbUrl) {
-          await dbPut(file.id, thumbUrl);
-          batchRef.current.set(file.id, thumbUrl);
-          scheduleFlush();
-        }
-      } catch { /* ignore */ }
-    }
-
-    videoProcessing.current = false;
-  }, [config.resolution, scheduleFlush]);
-
-  const queueVideoThumb = useCallback((file) => {
-    if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
-    pendingRef.current.add(file.id);
-    videoQueueRef.current.push(file);
-    processVideoQueue();
-  }, [processVideoQueue]);
+  }, [scheduleFlush]);
 
   // ── Generate thumbnails for visible files ─────
   const generateForVisible = useCallback((files) => {
@@ -269,15 +142,11 @@ export function useThumbnails(settings = {}) {
 
     for (const file of files) {
       if (cacheRef.current.has(file.id)) continue;
-      if (file.mime_hint === "image") {
-        loadImageThumb(file);
-      } else if (file.mime_hint === "video") {
-        queueVideoThumb(file);
-      }
+      loadThumb(file);
     }
-  }, [config.cooldownMs, loadImageThumb, queueVideoThumb]);
+  }, [config.cooldownMs, loadThumb]);
 
-  // ── Get cached thumbnail ──────────────────────
+  // ── Get cached thumbnail URL ──────────────────
   const getThumbnail = useCallback((fileId) => {
     const entry = cacheRef.current.get(fileId);
     if (entry) {
@@ -292,32 +161,18 @@ export function useThumbnails(settings = {}) {
     if (!config.fullscreenUnload) return;
     for (let i = 0; i < count && lruRef.current.length > 0; i++) {
       const id = lruRef.current.shift();
-      const entry = cacheRef.current.get(id);
-      if (entry?.url?.startsWith("blob:")) URL.revokeObjectURL(entry.url);
       cacheRef.current.delete(id);
     }
   }, [config.fullscreenUnload]);
 
   // ── Clear all ─────────────────────────────────
   const clearAll = useCallback(() => {
-    for (const entry of cacheRef.current.values()) {
-      if (entry?.url?.startsWith("blob:")) URL.revokeObjectURL(entry.url);
-    }
     cacheRef.current.clear();
     lruRef.current = [];
     pendingRef.current.clear();
     batchRef.current.clear();
     dbClear();
     forceUpdate(n => n + 1);
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      for (const entry of cacheRef.current.values()) {
-        if (entry?.url?.startsWith("blob:")) URL.revokeObjectURL(entry.url);
-      }
-    };
   }, []);
 
   return {

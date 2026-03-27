@@ -645,6 +645,30 @@ impl VaultManager {
         Ok(base64::engine::general_purpose::STANDARD.encode(&data))
     }
 
+    /// Get just the file path (lock-friendly — caller reads file after releasing lock)
+    pub fn get_file_path(&self, file_id: &str) -> Result<String, String> {
+        let entry = self.index.entries.get(file_id)
+            .ok_or("File not found")?;
+        Ok(entry.hidden_path.clone())
+    }
+
+    /// Get just the thumbnail path
+    pub fn get_thumb_file_path(&self, file_id: &str) -> Result<String, String> {
+        let entry = self.index.entries.get(file_id)
+            .ok_or("File not found")?;
+        if entry.thumb_path.is_empty() {
+            return Err("No thumbnail".to_string());
+        }
+        Ok(entry.thumb_path.clone())
+    }
+
+    /// Get the original filename for Content-Disposition
+    pub fn get_original_name(&self, file_id: &str) -> Result<String, String> {
+        let entry = self.index.entries.get(file_id)
+            .ok_or("File not found")?;
+        Ok(entry.original_name.clone())
+    }
+
     /// Get the pre-generated thumbnail as base64 JPEG. Much faster than get_file_base64.
     pub fn get_thumbnail(&self, file_id: &str) -> Result<String, String> {
         let entry = self.index.entries.get(file_id)

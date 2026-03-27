@@ -1,12 +1,45 @@
 mod vault;
 
 use vault::{VaultManager, AuditEntry, VaultSettings};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 use serde::{Deserialize, Serialize};
 
 struct AppState {
-    vault: Mutex<VaultManager>,
+    vault: Arc<Mutex<VaultManager>>,
+}
+
+fn guess_mime_type(name: &str) -> &'static str {
+    let n = name.to_lowercase();
+    if n.ends_with(".jpg") || n.ends_with(".jpeg") { "image/jpeg" }
+    else if n.ends_with(".png") { "image/png" }
+    else if n.ends_with(".gif") { "image/gif" }
+    else if n.ends_with(".webp") { "image/webp" }
+    else if n.ends_with(".bmp") { "image/bmp" }
+    else if n.ends_with(".svg") { "image/svg+xml" }
+    else if n.ends_with(".mp4") { "video/mp4" }
+    else if n.ends_with(".webm") { "video/webm" }
+    else if n.ends_with(".mkv") { "video/x-matroska" }
+    else if n.ends_with(".avi") { "video/x-msvideo" }
+    else if n.ends_with(".mov") { "video/quicktime" }
+    else if n.ends_with(".pdf") { "application/pdf" }
+    else if n.ends_with(".txt") { "text/plain" }
+    else { "application/octet-stream" }
+}
+
+/// Parse Range header: "bytes=START-END" or "bytes=START-"
+fn parse_range(header: &str, file_size: u64) -> Option<(u64, u64)> {
+    let s = header.strip_prefix("bytes=")?;
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 2 { return None; }
+    let start: u64 = parts[0].parse().ok()?;
+    let end: u64 = if parts[1].is_empty() {
+        file_size - 1
+    } else {
+        parts[1].parse().ok()?
+    };
+    if start > end || start >= file_size { return None; }
+    Some((start, end.min(file_size - 1)))
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -225,14 +258,163 @@ fn restore_backup(state: State<AppState>, backup_data: String) -> Result<String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let vault = VaultManager::new().expect("Failed to initialize vault");
+    let vault_arc = Arc::new(Mutex::new(
+        VaultManager::new().expect("Failed to initialize vault")
+    ));
+    let vault_for_protocol = vault_arc.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .register_asynchronous_uri_scheme_protocol("vault", move |_ctx, request, responder| {
+            let vault = vault_for_protocol.clone();
+            std::thread::spawn(move || {
+                let uri = request.uri().to_string();
+                // Parse: vault://localhost/file/{id} or vault://localhost/thumb/{id}
+                let path = uri.strip_prefix("vault://localhost/")
+                    .or_else(|| uri.strip_prefix("vault:///"))
+                    .or_else(|| uri.strip_prefix("vault://"))
+                    .unwrap_or("");
+
+                let (kind, file_id) = if let Some(id) = path.strip_prefix("file/") {
+                    ("file", id)
+                } else if let Some(id) = path.strip_prefix("thumb/") {
+                    ("thumb", id)
+                } else {
+                    responder.respond(
+                        tauri::http::Response::builder()
+                            .status(404)
+                            .body(b"Not found".to_vec())
+                            .unwrap()
+                    );
+                    return;
+                };
+
+                // Lock mutex only to get the path, then release
+                let (file_path, original_name) = {
+                    let v = match vault.lock() {
+                        Ok(v) => v,
+                        Err(_) => {
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .status(500)
+                                    .body(b"Lock failed".to_vec())
+                                    .unwrap()
+                            );
+                            return;
+                        }
+                    };
+                    let fp = if kind == "thumb" {
+                        v.get_thumb_file_path(file_id)
+                    } else {
+                        v.get_file_path(file_id)
+                    };
+                    let name = v.get_original_name(file_id).unwrap_or_default();
+                    (fp, name)
+                }; // Mutex released here
+
+                let file_path = match file_path {
+                    Ok(p) => p,
+                    Err(_) => {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(404)
+                                .body(b"File not found".to_vec())
+                                .unwrap()
+                        );
+                        return;
+                    }
+                };
+
+                let mime = if kind == "thumb" {
+                    "image/jpeg"
+                } else {
+                    guess_mime_type(&original_name)
+                };
+
+                let file_size = match std::fs::metadata(&file_path) {
+                    Ok(m) => m.len(),
+                    Err(_) => {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(404)
+                                .body(b"File missing on disk".to_vec())
+                                .unwrap()
+                        );
+                        return;
+                    }
+                };
+
+                // Check for Range header
+                let range_header = request.headers()
+                    .get("range")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
+
+                if let Some(ref range_str) = range_header {
+                    if let Some((start, end)) = parse_range(range_str, file_size) {
+                        let length = end - start + 1;
+                        use std::io::{Read, Seek, SeekFrom};
+                        let mut file = match std::fs::File::open(&file_path) {
+                            Ok(f) => f,
+                            Err(_) => {
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(b"Read error".to_vec())
+                                        .unwrap()
+                                );
+                                return;
+                            }
+                        };
+                        let _ = file.seek(SeekFrom::Start(start));
+                        let mut buf = vec![0u8; length as usize];
+                        let _ = file.read_exact(&mut buf);
+
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(206)
+                                .header("Content-Type", mime)
+                                .header("Content-Length", length.to_string())
+                                .header("Content-Range", format!("bytes {}-{}/{}", start, end, file_size))
+                                .header("Accept-Ranges", "bytes")
+                                .header("Access-Control-Allow-Origin", "*")
+                                .body(buf)
+                                .unwrap()
+                        );
+                        return;
+                    }
+                }
+
+                // Full response
+                let data = match std::fs::read(&file_path) {
+                    Ok(d) => d,
+                    Err(_) => {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(500)
+                                .body(b"Read error".to_vec())
+                                .unwrap()
+                        );
+                        return;
+                    }
+                };
+
+                responder.respond(
+                    tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", mime)
+                        .header("Content-Length", data.len().to_string())
+                        .header("Accept-Ranges", "bytes")
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(data)
+                        .unwrap()
+                );
+            });
+        })
         .manage(AppState {
-            vault: Mutex::new(vault),
+            vault: vault_arc.clone(),
         })
         .invoke_handler(tauri::generate_handler![
             hide_files,
