@@ -654,16 +654,16 @@
   transition: all 0.12s;
 }
 
-.fl-row-btn.reveal { color: var(--cyan); background: rgba(0, 229, 255, 0.08); }
-.fl-row-btn.reveal:hover { background: rgba(0, 229, 255, 0.16); }
-.fl-row-btn.edit { color: var(--green); background: rgba(105, 240, 174, 0.08); }
-.fl-row-btn.edit:hover { background: rgba(105, 240, 174, 0.16); }
-.fl-row-btn.del { color: var(--red); background: rgba(255, 82, 82, 0.08); }
-.fl-row-btn.del:hover { background: rgba(255, 82, 82, 0.16); }
-.fl-row-btn.restore { color: var(--green); background: rgba(105, 240, 174, 0.08); }
-.fl-row-btn.restore:hover { background: rgba(105, 240, 174, 0.16); }
-.fl-row-btn.view { color: var(--purple); background: rgba(124, 77, 255, 0.08); }
-.fl-row-btn.view:hover { background: rgba(124, 77, 255, 0.16); }
+.fl-row-btn.reveal { color: var(--cyan); background: rgba(0, 229, 255, 0.15); border: 1px solid rgba(0, 229, 255, 0.25); }
+.fl-row-btn.reveal:hover { background: rgba(0, 229, 255, 0.25); border-color: rgba(0, 229, 255, 0.4); }
+.fl-row-btn.edit { color: var(--green); background: rgba(105, 240, 174, 0.15); border: 1px solid rgba(105, 240, 174, 0.25); }
+.fl-row-btn.edit:hover { background: rgba(105, 240, 174, 0.25); border-color: rgba(105, 240, 174, 0.4); }
+.fl-row-btn.del { color: var(--red); background: rgba(255, 82, 82, 0.15); border: 1px solid rgba(255, 82, 82, 0.25); }
+.fl-row-btn.del:hover { background: rgba(255, 82, 82, 0.25); border-color: rgba(255, 82, 82, 0.4); }
+.fl-row-btn.restore { color: var(--green); background: rgba(105, 240, 174, 0.15); border: 1px solid rgba(105, 240, 174, 0.25); }
+.fl-row-btn.restore:hover { background: rgba(105, 240, 174, 0.25); border-color: rgba(105, 240, 174, 0.4); }
+.fl-row-btn.view { color: var(--purple); background: rgba(124, 77, 255, 0.15); border: 1px solid rgba(124, 77, 255, 0.25); }
+.fl-row-btn.view:hover { background: rgba(124, 77, 255, 0.25); border-color: rgba(124, 77, 255, 0.4); }
 
 /* Empty state */
 .fl-empty {
