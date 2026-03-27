@@ -574,34 +574,58 @@ impl VaultManager {
     }
 
     pub fn list_tags(&self, category: &str) -> Vec<String> {
-        // Return saved tags for this category
-        let mut tags = self.index.saved_tags
-            .get(category)
-            .cloned()
-            .unwrap_or_default();
+        // Image and video share tags
+        let categories = if category == "image" || category == "video" {
+            vec!["image", "video"]
+        } else {
+            vec![category]
+        };
+        let mut tags = Vec::new();
+        for cat in &categories {
+            if let Some(t) = self.index.saved_tags.get(*cat) {
+                tags.extend(t.clone());
+            }
+        }
         tags.sort();
         tags.dedup();
         tags
     }
 
     pub fn create_tag(&mut self, category: &str, tag: &str) -> Result<(), String> {
-        let tags = self.index.saved_tags
-            .entry(category.to_string())
-            .or_insert_with(Vec::new);
-        if !tags.contains(&tag.to_string()) {
-            tags.push(tag.to_string());
+        // Create tag for both image and video when either is requested
+        let categories = if category == "image" || category == "video" {
+            vec!["image".to_string(), "video".to_string()]
+        } else {
+            vec![category.to_string()]
+        };
+        for cat in categories {
+            let tags = self.index.saved_tags
+                .entry(cat)
+                .or_insert_with(Vec::new);
+            if !tags.contains(&tag.to_string()) {
+                tags.push(tag.to_string());
+            }
         }
         self.save_index()
     }
 
     pub fn delete_tag(&mut self, category: &str, tag: &str) -> Result<(), String> {
-        // Remove from saved tags
-        if let Some(tags) = self.index.saved_tags.get_mut(category) {
-            tags.retain(|t| t != tag);
+        // Delete tag from both image and video
+        let categories = if category == "image" || category == "video" {
+            vec!["image", "video"]
+        } else {
+            vec![category]
+        };
+        for cat in &categories {
+            if let Some(tags) = self.index.saved_tags.get_mut(*cat) {
+                tags.retain(|t| t != tag);
+            }
         }
-        // Clear tag from any files that have it
+        // Clear tag from files in both categories
         for entry in self.index.entries.values_mut() {
-            if entry.category == category && entry.tag == tag {
+            if (entry.mime_hint == "image" || entry.mime_hint == "video") && entry.tag == tag {
+                entry.tag = String::new();
+            } else if entry.category == category && entry.tag == tag {
                 entry.tag = String::new();
             }
         }
