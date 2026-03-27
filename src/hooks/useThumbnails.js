@@ -118,18 +118,10 @@ export function useThumbnails(settings = {}) {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
     pendingRef.current.add(file.id);
 
-    // For images: use vault://localhost/thumb/{id} directly (pre-generated JPEG)
-    // For videos: use vault://localhost/thumb/{id} if available, else show icon
+    // Use vault:// URL directly — no fetch needed, WebView handles it
     const url = vaultThumbUrl(file.id);
-
-    // Verify the thumb exists by trying to fetch it
-    try {
-      const res = await fetch(url, { method: "HEAD" });
-      if (res.ok) {
-        batchRef.current.set(file.id, url);
-        scheduleFlush();
-      }
-    } catch { /* no thumb available, show icon */ }
+    batchRef.current.set(file.id, url);
+    scheduleFlush();
 
     pendingRef.current.delete(file.id);
   }, [scheduleFlush]);
