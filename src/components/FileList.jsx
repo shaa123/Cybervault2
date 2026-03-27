@@ -168,7 +168,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     return result;
   }, [files, activeTag, search, sort]);
 
-  // Ctrl+A
+  // Ctrl+A and DEL key handlers
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "a" && isGridView) {
@@ -176,10 +176,16 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         if (selected.size === filteredFiles.length) setSelected(new Set());
         else setSelected(new Set(filteredFiles.map(f => f.id)));
       }
+      if (e.key === "Delete" && selected.size > 0) {
+        e.preventDefault();
+        invoke("delete_files", { fileIds: [...selected] })
+          .then(() => { setSelected(new Set()); onChanged(); })
+          .catch(err => console.error(err));
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isGridView, filteredFiles, selected]);
+  }, [isGridView, filteredFiles, selected, onChanged]);
 
   const toggleSelect = (e, id) => {
     e.stopPropagation();

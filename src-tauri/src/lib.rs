@@ -482,8 +482,37 @@ pub fn run() {
                 .and_then(|s| parse_range(s, file_size));
 
             // Images and GIFs: always serve the entire file (no chunking)
+            // Large non-GIF images (>5MB): downscale to max 2048px for fast rendering
             // Videos: use Range requests for seeking
             if !is_video_type && range.is_none() {
+                let name_lower = original_name.to_lowercase();
+                let is_gif = name_lower.ends_with(".gif");
+                let is_static_image = !is_gif && (
+                    name_lower.ends_with(".jpg") || name_lower.ends_with(".jpeg")
+                    || name_lower.ends_with(".png") || name_lower.ends_with(".bmp")
+                    || name_lower.ends_with(".webp")
+                );
+
+                // Downscale large static images for faster rendering
+                if is_static_image && file_size > 5 * 1024 * 1024 && kind == "file" {
+                    if let Ok(data) = std::fs::read(&file_path) {
+                        if let Ok(img) = image::load_from_memory(&data) {
+                            let resized = img.thumbnail(2048, 2048);
+                            let mut buf = std::io::Cursor::new(Vec::new());
+                            if resized.write_to(&mut buf, image::ImageFormat::Jpeg).is_ok() {
+                                let jpeg_data = buf.into_inner();
+                                return tauri::http::Response::builder()
+                                    .status(200)
+                                    .header("Content-Type", "image/jpeg")
+                                    .header("Content-Length", jpeg_data.len().to_string())
+                                    .body(jpeg_data)
+                                    .unwrap();
+                            }
+                        }
+                    }
+                    // Fallback: serve original if downscale fails
+                }
+
                 match std::fs::read(&file_path) {
                     Ok(data) => return tauri::http::Response::builder()
                         .status(200)
