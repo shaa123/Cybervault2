@@ -94,7 +94,17 @@ export default function App() {
   }, []);
 
   const loadFiles = useCallback(async (category) => {
-    try { setFiles(await invoke("list_files", { category })); } catch (e) { console.error(e); }
+    try {
+      const f = await invoke("list_files", { category });
+      // Shuffle for image/video tabs
+      if (category === "image" || category === "video") {
+        for (let i = f.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [f[i], f[j]] = [f[j], f[i]];
+        }
+      }
+      setFiles(f);
+    } catch (e) { console.error(e); }
   }, []);
 
   useEffect(() => {
@@ -122,19 +132,21 @@ export default function App() {
     refreshStats();
   };
 
-  const openMedia = (file) => setViewingMedia(file);
+  const displayedListRef = useRef([]);
+  const openMedia = (file, displayedFiles) => {
+    if (displayedFiles) displayedListRef.current = displayedFiles;
+    setViewingMedia(file);
+  };
   const closeMedia = () => setViewingMedia(null);
 
   const navigateMedia = useCallback((dir) => {
     if (!viewingMedia) return;
-    const mediaFiles = files.filter(f => f.mime_hint === "image" || f.mime_hint === "video");
-    const idx = mediaFiles.findIndex(f => f.id === viewingMedia.id);
+    const list = displayedListRef.current;
+    const idx = list.findIndex(f => f.id === viewingMedia.id);
     if (idx === -1) return;
-    const next = (idx + dir + mediaFiles.length) % mediaFiles.length;
-    setViewingMedia(mediaFiles[next]);
-  }, [viewingMedia, files]);
-
-  const mediaFiles = files.filter(f => f.mime_hint === "image" || f.mime_hint === "video");
+    const next = (idx + dir + list.length) % list.length;
+    setViewingMedia(list[next]);
+  }, [viewingMedia]);
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
@@ -165,7 +177,7 @@ export default function App() {
       {viewingMedia && (
         <MediaViewer
           file={viewingMedia}
-          files={mediaFiles}
+          files={displayedListRef.current}
           onClose={closeMedia}
           onNavigate={navigateMedia}
         />

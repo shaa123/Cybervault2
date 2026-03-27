@@ -371,7 +371,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           files={filteredFiles}
           selected={selected}
           onToggleSelect={toggleSelect}
-          onViewMedia={onViewMedia}
+          onViewMedia={(f) => onViewMedia(f, filteredFiles)}
           onUnhide={handleUnhide}
           onDelete={handleDelete}
           getThumbnail={getThumbnail}
