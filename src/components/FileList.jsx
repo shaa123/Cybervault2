@@ -37,9 +37,9 @@ function Thumbnail({ file }) {
   return <span className="grid-tile-icon">{ICONS[file.mime_hint] || "◧"}</span>;
 }
 
-/* ── Category Popup (3x3 grid) ── */
-function CategoryPopup({ tags, onSelect, onCreate, onClose }) {
-  const [creating, setCreating] = useState(false);
+/* ── Category Popup ── */
+function CategoryPopup({ category, tags, onTagCreated, onAssign, onClose, mode }) {
+  const [creating, setCreating] = useState(tags.length === 0);
   const [newName, setNewName] = useState("");
   const inputRef = useRef(null);
 
@@ -47,22 +47,30 @@ function CategoryPopup({ tags, onSelect, onCreate, onClose }) {
     if (creating && inputRef.current) inputRef.current.focus();
   }, [creating]);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const t = newName.trim();
-    if (t) { onCreate(t); setNewName(""); setCreating(false); }
+    if (!t) return;
+    try {
+      await invoke("create_tag", { category, tag: t });
+      setNewName("");
+      setCreating(false);
+      onTagCreated();
+    } catch (e) { console.error(e); }
   };
 
   return (
     <div className="cat-popup-overlay" onClick={onClose}>
       <div className="cat-popup" onClick={e => e.stopPropagation()}>
-        <div className="cat-popup-title">SELECT CATEGORY</div>
+        <div className="cat-popup-title">
+          {mode === "assign" ? "ASSIGN TO CATEGORY" : "CATEGORIES"}
+        </div>
 
         {creating && (
           <div className="cat-popup-input-row">
             <input
               ref={inputRef}
               className="cat-popup-input"
-              placeholder="Category name..."
+              placeholder="New category name..."
               value={newName}
               onChange={e => setNewName(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
@@ -73,7 +81,11 @@ function CategoryPopup({ tags, onSelect, onCreate, onClose }) {
 
         <div className="cat-popup-grid">
           {tags.map(t => (
-            <button key={t} className="cat-popup-tag" onClick={() => onSelect(t)}>
+            <button
+              key={t}
+              className="cat-popup-tag"
+              onClick={() => mode === "assign" ? onAssign(t) : null}
+            >
               {t}
             </button>
           ))}
@@ -83,12 +95,10 @@ function CategoryPopup({ tags, onSelect, onCreate, onClose }) {
         </div>
 
         <div className="cat-popup-actions">
-          {tags.length > 0 && (
-            <button className="fl-btn fl-btn-muted" onClick={() => onSelect("")}>
-              CLEAR TAG
-            </button>
+          {mode === "assign" && (
+            <button className="fl-btn fl-btn-muted" onClick={() => onAssign("")}>CLEAR TAG</button>
           )}
-          <button className="fl-btn fl-btn-muted" onClick={onClose}>CANCEL</button>
+          <button className="fl-btn fl-btn-muted" onClick={onClose}>CLOSE</button>
         </div>
       </div>
     </div>
@@ -101,18 +111,20 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   const [tags, setTags] = useState([]);
   const [activeTag, setActiveTag] = useState("");
   const [showCatPopup, setShowCatPopup] = useState(false);
-  const [catTarget, setCatTarget] = useState(null); // null = batch, or file id
+  const [catMode, setCatMode] = useState("browse"); // "browse" or "assign"
   const isGridView = category === "image" || category === "video";
   const showCategories = category !== "trash";
 
-  // Load tags
-  useEffect(() => {
+  const refreshTags = useCallback(() => {
     invoke("list_tags", { category }).then(setTags).catch(() => setTags([]));
+  }, [category]);
+
+  useEffect(() => {
+    refreshTags();
     setActiveTag("");
     setSelected(new Set());
-  }, [category, files]);
+  }, [category, files, refreshTags]);
 
-  // Filter files by tag
   const filteredFiles = activeTag === "__untagged"
     ? files.filter(f => !f.tag)
     : activeTag
@@ -192,46 +204,30 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     } catch (e) { console.error(e); }
   };
 
-  // Category popup handlers
-  const openCatPopup = (target = null) => {
-    setCatTarget(target);
-    // If opening from toolbar with no selection and no specific file,
-    // auto-select all visible files so the tag applies to something
-    if (!target && selected.size === 0) {
-      setSelected(new Set(filteredFiles.map(f => f.id)));
-    }
+  // Open category popup in browse mode (just view/create tags)
+  const openCatBrowse = () => {
+    setCatMode("browse");
     setShowCatPopup(true);
   };
 
-  const handleCatSelect = async (tag) => {
+  // Open category popup in assign mode (pick a tag for selected files)
+  const openCatAssign = () => {
+    setCatMode("assign");
+    setShowCatPopup(true);
+  };
+
+  const handleAssignTag = async (tag) => {
     setShowCatPopup(false);
     try {
-      if (catTarget) {
-        // Single file
-        await invoke("set_file_tag", { fileId: catTarget, tag });
-      } else {
-        // Batch
-        await invoke("set_files_tag", { fileIds: [...selected], tag });
-        setSelected(new Set());
-      }
+      await invoke("set_files_tag", { fileIds: [...selected], tag });
+      setSelected(new Set());
       onChanged();
     } catch (e) { console.error(e); }
   };
 
-  const handleCatCreate = async (name) => {
-    setShowCatPopup(false);
-    try {
-      if (catTarget) {
-        await invoke("set_file_tag", { fileId: catTarget, tag: name });
-      } else {
-        await invoke("set_files_tag", { fileIds: [...selected], tag: name });
-        setSelected(new Set());
-      }
-      onChanged();
-    } catch (e) { console.error(e); }
+  const handleTagCreated = () => {
+    refreshTags();
   };
-
-  const isMedia = (f) => f.mime_hint === "image" || f.mime_hint === "video";
 
   return (
     <div className="filelist" style={{ "--list-color": color }}>
@@ -239,9 +235,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       <div className="fl-toolbar">
         <div className="fl-title">{TITLES[category]}</div>
         {showCategories && (
-          <button className="fl-btn fl-btn-muted" onClick={() => openCatPopup(null)}>
-            CATEGORY
-          </button>
+          <button className="fl-btn fl-btn-muted" onClick={openCatBrowse}>CATEGORY</button>
         )}
         {category === "note" && (
           <button className="fl-btn fl-btn-primary" onClick={() => onEditNote(null)}>+ NEW NOTE</button>
@@ -279,7 +273,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       {selected.size > 0 && (
         <div className="select-bar">
           <span className="select-count">{selected.size} SELECTED</span>
-          <button className="fl-btn fl-btn-primary" onClick={() => openCatPopup(null)}>TAG</button>
+          <button className="fl-btn fl-btn-primary" onClick={openCatAssign}>TAG</button>
           <button className="fl-btn fl-btn-danger" onClick={handleBatchDelete}>DELETE</button>
           <button className="fl-btn fl-btn-muted" onClick={() => setSelected(new Set())}>CANCEL</button>
         </div>
@@ -356,7 +350,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
                   <button className="fl-row-btn restore" onClick={() => handleRestore(f.id)}>RESTORE</button>
                 ) : (
                   <>
-                    <button className="fl-row-btn view" onClick={() => openCatPopup(f.id)}>TAG</button>
                     {category === "note" && (
                       <button className="fl-row-btn edit" onClick={() => onEditNote(f)}>EDIT</button>
                     )}
@@ -373,10 +366,12 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       {/* Category popup */}
       {showCatPopup && (
         <CategoryPopup
+          category={category}
           tags={tags}
-          onSelect={handleCatSelect}
-          onCreate={handleCatCreate}
+          onTagCreated={handleTagCreated}
+          onAssign={handleAssignTag}
           onClose={() => setShowCatPopup(false)}
+          mode={catMode}
         />
       )}
     </div>

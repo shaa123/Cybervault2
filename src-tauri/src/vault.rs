@@ -42,6 +42,8 @@ struct VaultEntry {
 #[derive(Serialize, Deserialize)]
 struct VaultIndex {
     entries: HashMap<String, VaultEntry>,
+    #[serde(default)]
+    saved_tags: HashMap<String, Vec<String>>,
 }
 
 pub struct VaultManager {
@@ -65,10 +67,12 @@ impl VaultManager {
             let decoded = Self::deobfuscate_index(&data);
             serde_json::from_str(&decoded).unwrap_or(VaultIndex {
                 entries: HashMap::new(),
+                saved_tags: HashMap::new(),
             })
         } else {
             VaultIndex {
                 entries: HashMap::new(),
+                saved_tags: HashMap::new(),
             }
         };
 
@@ -351,14 +355,38 @@ impl VaultManager {
     }
 
     pub fn list_tags(&self, category: &str) -> Vec<String> {
-        let mut tags: Vec<String> = self.index.entries.values()
-            .filter(|e| e.category == category && !e.tag.is_empty())
-            .map(|e| e.tag.clone())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
+        // Return saved tags for this category
+        let mut tags = self.index.saved_tags
+            .get(category)
+            .cloned()
+            .unwrap_or_default();
         tags.sort();
+        tags.dedup();
         tags
+    }
+
+    pub fn create_tag(&mut self, category: &str, tag: &str) -> Result<(), String> {
+        let tags = self.index.saved_tags
+            .entry(category.to_string())
+            .or_insert_with(Vec::new);
+        if !tags.contains(&tag.to_string()) {
+            tags.push(tag.to_string());
+        }
+        self.save_index()
+    }
+
+    pub fn delete_tag(&mut self, category: &str, tag: &str) -> Result<(), String> {
+        // Remove from saved tags
+        if let Some(tags) = self.index.saved_tags.get_mut(category) {
+            tags.retain(|t| t != tag);
+        }
+        // Clear tag from any files that have it
+        for entry in self.index.entries.values_mut() {
+            if entry.category == category && entry.tag == tag {
+                entry.tag = String::new();
+            }
+        }
+        self.save_index()
     }
 
     pub fn unhide_file(&mut self, file_id: &str, destination: &str) -> Result<(), String> {

@@ -117,6 +117,18 @@ fn list_tags(state: State<AppState>, category: String) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
+fn create_tag(state: State<AppState>, category: String, tag: String) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.create_tag(&category, &tag)
+}
+
+#[tauri::command]
+fn delete_tag(state: State<AppState>, category: String, tag: String) -> Result<(), String> {
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.delete_tag(&category, &tag)
+}
+
+#[tauri::command]
 fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> Result<(), String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
     for id in file_ids {
@@ -156,6 +168,8 @@ pub fn run() {
             set_file_tag,
             set_files_tag,
             list_tags,
+            create_tag,
+            delete_tag,
             delete_files,
             debug_info,
         ])
