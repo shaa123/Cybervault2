@@ -341,7 +341,7 @@ pub fn run() {
                     .or_else(|| uri.strip_prefix("vault://"))
                     .unwrap_or("");
 
-                let (kind, file_id) = if let Some(id) = path.strip_prefix("file/") {
+                let (kind, file_id_raw) = if let Some(id) = path.strip_prefix("file/") {
                     ("file", id)
                 } else if let Some(id) = path.strip_prefix("thumb/") {
                     ("thumb", id)
@@ -354,6 +354,9 @@ pub fn run() {
                     );
                     return;
                 };
+
+                // Strip query string if present
+                let file_id = file_id_raw.split('?').next().unwrap_or(file_id_raw);
 
                 // Lock mutex BRIEFLY to get paths only, then release
                 let (thumb_path_result, hidden_path, original_name, vault_root) = {
