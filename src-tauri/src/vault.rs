@@ -329,8 +329,8 @@ impl VaultManager {
             let mime_hint = Self::guess_mime(&original_name);
             let cat = if category == "auto" { &mime_hint } else { category };
 
-            // Generate thumbnail BEFORE moving (source still accessible)
-            let thumb_path = Self::generate_thumbnail(source, &thumb_dir);
+            // Generate thumbnail BEFORE moving (source still has correct extension)
+            let thumb_path = Self::generate_thumbnail_from_hidden(source, &original_name, &thumb_dir);
 
             let fake_name = self.generate_fake_name();
             let hidden_path = hidden_dir.join(&fake_name);
@@ -430,10 +430,10 @@ impl VaultManager {
             }
         }
 
-        // Generate thumbnail for images
+        // Generate thumbnail for images (use original_name for format detection)
         let thumb_dir = self.vault_root.join(".thumbs");
         let _ = fs::create_dir_all(&thumb_dir);
-        let thumb_path = Self::generate_thumbnail(&hidden_path, &thumb_dir);
+        let thumb_path = Self::generate_thumbnail_from_hidden(&hidden_path, &original_name, &thumb_dir);
 
         let id = Uuid::new_v4().to_string();
         let now = chrono_now();
@@ -741,8 +741,51 @@ impl VaultManager {
         fs::read_to_string(&entry.hidden_path).map_err(|e| e.to_string())
     }
 
+    /// Guess image format from original filename (not the fake hidden name)
+    fn guess_image_format(original_name: &str) -> Option<image::ImageFormat> {
+        let n = original_name.to_lowercase();
+        if n.ends_with(".jpg") || n.ends_with(".jpeg") { Some(image::ImageFormat::Jpeg) }
+        else if n.ends_with(".png") { Some(image::ImageFormat::Png) }
+        else if n.ends_with(".gif") { Some(image::ImageFormat::Gif) }
+        else if n.ends_with(".bmp") { Some(image::ImageFormat::Bmp) }
+        else if n.ends_with(".webp") { Some(image::ImageFormat::WebP) }
+        else { None }
+    }
+
+    /// Generate a thumbnail from a hidden file using the original name to determine format.
+    fn generate_thumbnail_from_hidden(hidden_path: &Path, original_name: &str, thumb_dir: &Path) -> String {
+        let format = match Self::guess_image_format(original_name) {
+            Some(f) => f,
+            None => return String::new(),
+        };
+
+        let bytes = match fs::read(hidden_path) {
+            Ok(b) => b,
+            Err(_) => return String::new(),
+        };
+
+        let img = match image::load_from_memory_with_format(&bytes, format) {
+            Ok(i) => i,
+            Err(_) => {
+                // Try guessing from bytes as fallback
+                match image::load_from_memory(&bytes) {
+                    Ok(i) => i,
+                    Err(_) => return String::new(),
+                }
+            }
+        };
+
+        let thumb = img.thumbnail(256, 256);
+        let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
+        let thumb_path = thumb_dir.join(&thumb_name);
+
+        match thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg) {
+            Ok(_) => thumb_path.to_string_lossy().to_string(),
+            Err(_) => String::new(),
+        }
+    }
+
     /// Generate thumbnails for all image entries that don't have one yet.
-    /// Uses hidden_path as source (ignores fake extension, checks mime_hint).
     pub fn regenerate_thumbnails(&mut self) -> usize {
         let thumb_dir = self.vault_root.join(".thumbs");
         let _ = fs::create_dir_all(&thumb_dir);
@@ -751,29 +794,22 @@ impl VaultManager {
         let ids: Vec<String> = self.index.entries.keys().cloned().collect();
 
         for id in ids {
-            let needs_thumb = {
+            let (needs_thumb, hidden_path, original_name) = {
                 let entry = &self.index.entries[&id];
-                entry.thumb_path.is_empty() && entry.mime_hint == "image"
+                (
+                    entry.thumb_path.is_empty() && entry.mime_hint == "image",
+                    entry.hidden_path.clone(),
+                    entry.original_name.clone(),
+                )
             };
 
             if needs_thumb {
-                let hidden_path = self.index.entries[&id].hidden_path.clone();
-                let source = Path::new(&hidden_path);
-                if source.exists() {
-                    // Force open as image regardless of fake extension
-                    match image::open(source) {
-                        Ok(img) => {
-                            let thumb = img.thumbnail(256, 256);
-                            let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
-                            let thumb_path = thumb_dir.join(&thumb_name);
-                            if thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg).is_ok() {
-                                self.index.entries.get_mut(&id).unwrap().thumb_path =
-                                    thumb_path.to_string_lossy().to_string();
-                                count += 1;
-                            }
-                        }
-                        Err(_) => {}
-                    }
+                let thumb_path = Self::generate_thumbnail_from_hidden(
+                    Path::new(&hidden_path), &original_name, &thumb_dir
+                );
+                if !thumb_path.is_empty() {
+                    self.index.entries.get_mut(&id).unwrap().thumb_path = thumb_path;
+                    count += 1;
                 }
             }
         }
