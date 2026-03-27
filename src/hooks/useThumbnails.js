@@ -151,10 +151,10 @@ export function useThumbnails(settings = {}) {
     if (now - lastGenTime.current < config.cooldownMs) return;
     lastGenTime.current = now;
 
-    // Load up to 4 per batch via invoke to avoid overwhelming IPC
+    // Load up to 15 per batch — invoke is fast, data URLs are in-memory
     let loaded = 0;
     for (const file of files) {
-      if (loaded >= 4) break;
+      if (loaded >= 15) break;
       if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) continue;
       loadThumb(file);
       loaded++;

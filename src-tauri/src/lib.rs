@@ -381,19 +381,13 @@ pub fn run() {
                 is_animated = name_lower.ends_with(".gif") || name_lower.ends_with(".webm")
                     || name_lower.ends_with(".mp4");
 
-                if is_animated {
-                    // Animated formats: serve original file
-                    file_path = match hidden_path {
-                        Some(p) => p,
-                        None => return tauri::http::Response::builder()
-                            .status(404).body(b"Not found".to_vec()).unwrap(),
-                    };
-                } else if let Some(tp) = thumb_path_result {
-                    // Pre-generated thumb exists — serve it
+                if let Some(tp) = thumb_path_result {
+                    // Pre-generated static thumb exists — serve it
+                    // Works for all types including GIFs (serves static JPEG, no autoplay)
                     file_path = tp;
+                    is_animated = false; // Always serve as JPEG
                 } else {
-                    // No thumb yet — return 404, frontend shows icon
-                    // Use Settings → Tools → Cache All Thumbnails to generate
+                    // No thumb — return 404, frontend shows icon
                     return tauri::http::Response::builder()
                         .status(404).body(b"No thumbnail".to_vec()).unwrap();
                 }
