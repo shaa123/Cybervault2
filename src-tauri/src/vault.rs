@@ -240,6 +240,54 @@ impl VaultManager {
         }
     }
 
+    /// Generate a thumbnail on-the-fly for a file that doesn't have one.
+    /// Returns the thumb path if successful.
+    pub fn generate_thumb_for_file(&mut self, file_id: &str) -> Result<String, String> {
+        let entry = self.index.entries.get(file_id)
+            .ok_or("File not found")?;
+
+        // Already has a thumbnail
+        if !entry.thumb_path.is_empty() && Path::new(&entry.thumb_path).exists() {
+            return Ok(entry.thumb_path.clone());
+        }
+
+        let hidden_path = entry.hidden_path.clone();
+        let original_name = entry.original_name.clone();
+        let file_id = file_id.to_string();
+
+        // Check if it's an image type
+        let ext = Path::new(&original_name).extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp");
+        if !is_image {
+            return Err("Not an image file".to_string());
+        }
+
+        let thumb_dir = self.vault_root.join(".thumbs");
+        let _ = fs::create_dir_all(&thumb_dir);
+
+        let source = Path::new(&hidden_path);
+        let thumb_path = Self::generate_thumbnail(source, &thumb_dir);
+        if thumb_path.is_empty() {
+            return Err("Failed to generate thumbnail".to_string());
+        }
+
+        // Update the entry with the new thumb path
+        if let Some(entry) = self.index.entries.get_mut(&file_id) {
+            entry.thumb_path = thumb_path.clone();
+        }
+        let _ = self.save_index();
+
+        Ok(thumb_path)
+    }
+
+    /// Get vault root path (for protocol handler)
+    pub fn vault_root_path(&self) -> &Path {
+        &self.vault_root
+    }
+
     fn obfuscate_index(data: &str) -> String {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD.encode(data.as_bytes())

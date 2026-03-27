@@ -302,7 +302,7 @@ pub fn run() {
 
                 // Lock mutex only to get the path, then release
                 let (file_path, original_name) = {
-                    let v = match vault.lock() {
+                    let mut v = match vault.lock() {
                         Ok(v) => v,
                         Err(_) => {
                             responder.respond(
@@ -314,8 +314,16 @@ pub fn run() {
                             return;
                         }
                     };
+
                     let fp = if kind == "thumb" {
-                        v.get_thumb_file_path(file_id)
+                        // Try existing thumb first
+                        match v.get_thumb_file_path(file_id) {
+                            Ok(p) => Ok(p),
+                            Err(_) => {
+                                // No thumb — generate on-the-fly
+                                v.generate_thumb_for_file(file_id)
+                            }
+                        }
                     } else {
                         v.get_file_path(file_id)
                     };

@@ -61,7 +61,7 @@ async function dbClear() {
 export const THUMB_DEFAULTS = {
   resolution: 256,
   maxThumbnails: 200,
-  cooldownMs: 1000,
+  cooldownMs: 300,
   fullscreenUnload: true,
   wipeCacheOnLock: true,
   cacheAll: false,
@@ -126,24 +126,12 @@ export function useThumbnails(settings = {}) {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
     pendingRef.current.add(file.id);
 
-    // Test if pre-generated thumbnail exists by loading it as an Image
-    const thumbUrl = vaultThumbUrl(file.id);
-    const img = new Image();
-    img.onload = () => {
-      // Thumb exists — use it
-      batchRef.current.set(file.id, thumbUrl);
-      pendingRef.current.delete(file.id);
-      scheduleFlush();
-    };
-    img.onerror = () => {
-      // No thumb — fall back to full file URL (browser will resize via CSS)
-      if (file.mime_hint === "image") {
-        batchRef.current.set(file.id, vaultFileUrl(file.id));
-      }
-      pendingRef.current.delete(file.id);
-      scheduleFlush();
-    };
-    img.src = thumbUrl;
+    // vault://thumb/ generates on-the-fly if no pre-generated thumb exists
+    // First request ~50ms (generates), subsequent ~2ms (cached on disk)
+    const url = vaultThumbUrl(file.id);
+    batchRef.current.set(file.id, url);
+    pendingRef.current.delete(file.id);
+    scheduleFlush();
   }, [scheduleFlush]);
 
   // ── Generate thumbnails for visible files ─────
@@ -152,10 +140,10 @@ export function useThumbnails(settings = {}) {
     if (now - lastGenTime.current < config.cooldownMs) return;
     lastGenTime.current = now;
 
-    // Limit concurrent loads to 4 per batch to reduce FPS drops
+    // Load up to 15 per batch — thumbs are small ~10KB JPEGs
     let loaded = 0;
     for (const file of files) {
-      if (loaded >= 4) break;
+      if (loaded >= 15) break;
       if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) continue;
       loadThumb(file);
       loaded++;
