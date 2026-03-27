@@ -122,16 +122,28 @@ export function useThumbnails(settings = {}) {
   }, [flushBatch]);
 
   // ── Load thumbnail ────────────────────────────
-  const loadThumb = useCallback(async (file) => {
+  const loadThumb = useCallback((file) => {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
     pendingRef.current.add(file.id);
 
-    // Use vault:// URL directly — no fetch needed, WebView handles it
-    const url = vaultThumbUrl(file.id);
-    batchRef.current.set(file.id, url);
-    scheduleFlush();
-
-    pendingRef.current.delete(file.id);
+    // Test if pre-generated thumbnail exists by loading it as an Image
+    const thumbUrl = vaultThumbUrl(file.id);
+    const img = new Image();
+    img.onload = () => {
+      // Thumb exists — use it
+      batchRef.current.set(file.id, thumbUrl);
+      pendingRef.current.delete(file.id);
+      scheduleFlush();
+    };
+    img.onerror = () => {
+      // No thumb — fall back to full file URL (browser will resize via CSS)
+      if (file.mime_hint === "image") {
+        batchRef.current.set(file.id, vaultFileUrl(file.id));
+      }
+      pendingRef.current.delete(file.id);
+      scheduleFlush();
+    };
+    img.src = thumbUrl;
   }, [scheduleFlush]);
 
   // ── Generate thumbnails for visible files ─────
