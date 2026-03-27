@@ -2,7 +2,7 @@ import React, { useRef, useCallback, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const ICONS = { image: "◈", video: "▶", text: "✎", document: "◧" };
-const COLS = 5;
+const COLS = 4;
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + " B";

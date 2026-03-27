@@ -152,9 +152,13 @@ export function useThumbnails(settings = {}) {
     if (now - lastGenTime.current < config.cooldownMs) return;
     lastGenTime.current = now;
 
+    // Limit concurrent loads to 8 per batch to reduce FPS drops
+    let loaded = 0;
     for (const file of files) {
-      if (cacheRef.current.has(file.id)) continue;
+      if (loaded >= 8) break;
+      if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) continue;
       loadThumb(file);
+      loaded++;
     }
   }, [config.cooldownMs, loadThumb]);
 
