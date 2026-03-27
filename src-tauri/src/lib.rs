@@ -468,10 +468,12 @@ pub fn run() {
                     .status(404).body(b"File missing".to_vec()).unwrap(),
             };
 
-            // Max chunk size: 4MB — prevents OOM on large files
+            // Max chunk size for VIDEO range requests only
             const MAX_CHUNK: u64 = 4 * 1024 * 1024;
 
             use std::io::{Read as _, Seek as _, SeekFrom};
+
+            let is_video_type = mime.starts_with("video/");
 
             // Parse Range header if present
             let range = request.headers()
@@ -479,32 +481,32 @@ pub fn run() {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| parse_range(s, file_size));
 
+            // Images and GIFs: always serve the entire file (no chunking)
+            // Videos: use Range requests for seeking
+            if !is_video_type && range.is_none() {
+                match std::fs::read(&file_path) {
+                    Ok(data) => return tauri::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", mime)
+                        .header("Content-Length", data.len().to_string())
+                        .header("Accept-Ranges", "bytes")
+                        .body(data)
+                        .unwrap(),
+                    Err(_) => return tauri::http::Response::builder()
+                        .status(500)
+                        .body(b"Read error".to_vec())
+                        .unwrap(),
+                }
+            }
+
             let (start, end) = match range {
                 Some((s, e)) => {
-                    // Clamp to MAX_CHUNK
                     let clamped_end = s.saturating_add(MAX_CHUNK - 1).min(e);
                     (s, clamped_end)
                 }
                 None => {
-                    if file_size <= MAX_CHUNK {
-                        // Small file — serve entirely
-                        match std::fs::read(&file_path) {
-                            Ok(data) => return tauri::http::Response::builder()
-                                .status(200)
-                                .header("Content-Type", mime)
-                                .header("Content-Length", data.len().to_string())
-                                .header("Accept-Ranges", "bytes")
-                                .body(data)
-                                .unwrap(),
-                            Err(_) => return tauri::http::Response::builder()
-                                .status(500)
-                                .body(b"Read error".to_vec())
-                                .unwrap(),
-                        }
-                    }
-                    // Large file without Range header — serve first chunk as 206
-                    // to force the browser to use Range requests for the rest
-                    (0, MAX_CHUNK - 1)
+                    // Video without Range header — serve first chunk as 206
+                    (0, MAX_CHUNK.min(file_size) - 1)
                 }
             };
 
