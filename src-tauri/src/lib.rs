@@ -4,6 +4,7 @@ use vault::{VaultManager, AuditEntry, VaultSettings};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 use serde::{Deserialize, Serialize};
+use rand::Rng;
 
 struct AppState {
     vault: Arc<Mutex<VaultManager>>,
@@ -249,6 +250,37 @@ fn generate_thumbs_batch(state: State<AppState>, batch_size: usize) -> Result<us
     Ok(generated)
 }
 
+/// Save a frontend-generated thumbnail (e.g. video frame capture)
+#[tauri::command]
+fn save_thumb_data(state: State<AppState>, file_id: String, thumb_base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(&thumb_base64)
+        .map_err(|e| format!("Invalid base64: {}", e))?;
+
+    let vault_root = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        vault.vault_root_path().to_path_buf()
+    };
+
+    let thumb_dir = vault_root.join(".thumbs");
+    let _ = std::fs::create_dir_all(&thumb_dir);
+
+    let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
+    let thumb_path = thumb_dir.join(&thumb_name);
+    std::fs::write(&thumb_path, &data).map_err(|e| e.to_string())?;
+
+    let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.set_thumb_path(&file_id, &thumb_path.to_string_lossy())
+}
+
+/// Get list of video file IDs that don't have thumbnails
+#[tauri::command]
+fn get_missing_video_thumb_ids(state: State<AppState>) -> Result<Vec<String>, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.get_missing_video_thumb_ids())
+}
+
 #[tauri::command]
 fn debug_info(state: State<AppState>) -> Result<String, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
@@ -489,8 +521,9 @@ pub fn run() {
             get_thumbnail,
             get_cached_thumb_ids,
             generate_thumbs_batch,
+            save_thumb_data,
+            get_missing_video_thumb_ids,
             has_thumbnail,
-            generate_thumbs_batch,
             debug_info,
             set_pin,
             verify_pin,

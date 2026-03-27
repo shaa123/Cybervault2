@@ -225,16 +225,23 @@ impl VaultManager {
         Self::generate_thumbnail(source, thumb_dir)
     }
 
-    /// Try to generate a thumbnail from any file. Detects format from file
-    /// header bytes, not extension (hidden files have fake extensions like .sys).
+    /// Try to generate a thumbnail from any image file.
+    /// Detects format from file header bytes, not extension.
+    /// Caps file read at 100MB to avoid OOM on huge files.
     fn generate_thumbnail(source: &Path, thumb_dir: &Path) -> String {
-        // Read file header to detect format (don't trust extension)
+        // Skip files larger than 100MB (likely videos or huge GIFs)
+        let file_size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+        if file_size > 100 * 1024 * 1024 || file_size == 0 {
+            return String::new();
+        }
+
+        // Read file to detect format from header bytes
         let data = match fs::read(source) {
             Ok(d) => d,
             Err(_) => return String::new(),
         };
 
-        // Try to decode as image using format detection from bytes
+        // Try to decode as image
         let img = match image::load_from_memory(&data) {
             Ok(img) => img,
             Err(_) => return String::new(),
@@ -762,6 +769,13 @@ impl VaultManager {
     }
 
     /// Return IDs of image files that DON'T have thumbnails yet
+    pub fn get_missing_video_thumb_ids(&self) -> Vec<String> {
+        self.index.entries.iter()
+            .filter(|(_, e)| e.thumb_path.is_empty() && e.category != "trash" && e.mime_hint == "video")
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
     pub fn get_missing_thumb_ids(&self) -> Vec<(String, String)> {
         self.index.entries.iter()
             .filter(|(_, e)| {

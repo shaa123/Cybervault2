@@ -1,5 +1,49 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { vaultFileUrl } from "../hooks/useThumbnails";
+
+/** Capture first frame of a video file as base64 JPEG */
+function captureVideoFrame(fileId) {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "auto";
+    video.crossOrigin = "anonymous";
+    video.src = vaultFileUrl(fileId);
+
+    const timeout = setTimeout(() => {
+      video.src = "";
+      resolve(null);
+    }, 10000);
+
+    video.onloadeddata = () => { video.currentTime = 0.5; };
+    video.onseeked = () => {
+      clearTimeout(timeout);
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext("2d");
+        const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
+        const w = video.videoWidth * scale;
+        const h = video.videoHeight * scale;
+        ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        const b64 = dataUrl.split(",")[1];
+        video.src = "";
+        resolve(b64);
+      } catch {
+        video.src = "";
+        resolve(null);
+      }
+    };
+    video.onerror = () => {
+      clearTimeout(timeout);
+      video.src = "";
+      resolve(null);
+    };
+  });
+}
 
 export default function Settings({ stats, onPurge, onOpenAudit }) {
   const [debugText, setDebugText] = useState("");
@@ -113,35 +157,48 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
       setCacheProgress(null);
       return;
     }
-    // Start background caching
     cachingRef.current = true;
     setCaching(true);
 
-    // Count total missing
     const cachedIds = await invoke("get_cached_thumb_ids");
-    const totalImages = stats.images || 0;
-    const alreadyCached = cachedIds.length;
-    let done = alreadyCached;
-    setCacheProgress({ done, total: totalImages });
+    const totalFiles = (stats.images || 0) + (stats.videos || 0);
+    let done = cachedIds.length;
+    setCacheProgress({ done, total: totalFiles });
 
-    // Process in batches of 5
+    // Phase 1: Cache image thumbnails (Rust backend, parallel)
     while (cachingRef.current) {
       try {
         const generated = await invoke("generate_thumbs_batch", { batchSize: 20 });
-        if (generated === 0) {
-          // All done
-          setCacheProgress({ done: totalImages, total: totalImages });
-          break;
-        }
+        if (generated === 0) break;
         done += generated;
-        setCacheProgress({ done: Math.min(done, totalImages), total: totalImages });
-        // Brief yield between batches
+        setCacheProgress({ done: Math.min(done, totalFiles), total: totalFiles });
         await new Promise(r => setTimeout(r, 10));
       } catch (e) {
-        console.error("Cache batch error:", e);
+        console.error("Image cache error:", e);
         break;
       }
     }
+
+    // Phase 2: Cache video thumbnails (frontend, one at a time)
+    if (cachingRef.current) {
+      try {
+        const videoIds = await invoke("get_missing_video_thumb_ids");
+        for (const vid of videoIds) {
+          if (!cachingRef.current) break;
+          try {
+            const thumbData = await captureVideoFrame(vid);
+            if (thumbData) {
+              await invoke("save_thumb_data", { fileId: vid, thumbBase64: thumbData });
+              done++;
+              setCacheProgress({ done: Math.min(done, totalFiles), total: totalFiles });
+            }
+          } catch { /* skip failed videos */ }
+          await new Promise(r => setTimeout(r, 100));
+        }
+      } catch (e) { console.error("Video cache error:", e); }
+    }
+
+    setCacheProgress({ done: totalFiles, total: totalFiles });
     cachingRef.current = false;
     setCaching(false);
   };
