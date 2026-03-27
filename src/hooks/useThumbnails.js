@@ -138,7 +138,7 @@ export function useThumbnails(settings = {}) {
     if (cacheRef.current.has(file.id) || pendingRef.current.has(file.id)) return;
     pendingRef.current.add(file.id);
 
-    // Check IndexedDB first
+    // Check IndexedDB cache first
     const cached = await dbGet(file.id);
     if (cached) {
       batchRef.current.set(file.id, cached);
@@ -148,29 +148,38 @@ export function useThumbnails(settings = {}) {
     }
 
     try {
-      const b64 = await invoke("get_file_preview", { fileId: file.id });
-      const mime = getMime(file.original_name);
-      const url = `data:${mime};base64,${b64}`;
+      // Try pre-generated thumbnail first (small JPEG, ~5-15KB)
+      let thumbUrl = null;
+      try {
+        const b64 = await invoke("get_thumbnail", { fileId: file.id });
+        thumbUrl = `data:image/jpeg;base64,${b64}`;
+      } catch {
+        // No pre-generated thumb — fall back to full file + resize
+        const b64 = await invoke("get_file_preview", { fileId: file.id });
+        const mime = getMime(file.original_name);
+        const url = `data:${mime};base64,${b64}`;
 
-      // Resize via canvas
-      const img = new Image();
-      img.src = url;
-      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+        const img = new Image();
+        img.src = url;
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
 
-      const canvas = document.createElement("canvas");
-      const size = config.resolution;
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      const scale = Math.max(size / img.width, size / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        const canvas = document.createElement("canvas");
+        const size = config.resolution;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        thumbUrl = canvas.toDataURL("image/webp", 0.7);
+      }
 
-      const thumbUrl = canvas.toDataURL("image/webp", 0.7);
-      await dbPut(file.id, thumbUrl);
-      batchRef.current.set(file.id, thumbUrl);
-      scheduleFlush();
+      if (thumbUrl) {
+        await dbPut(file.id, thumbUrl);
+        batchRef.current.set(file.id, thumbUrl);
+        scheduleFlush();
+      }
     } catch { /* ignore */ }
 
     pendingRef.current.delete(file.id);

@@ -33,6 +33,8 @@ struct VaultEntry {
     size: u64,
     hidden_at: String,
     hidden_path: String,
+    #[serde(default)]
+    thumb_path: String,
     mime_hint: String,
     original_category: Option<String>,
     #[serde(default)]
@@ -207,6 +209,37 @@ impl VaultManager {
         format!("{}_{:016x}{}", prefix, hash, ext)
     }
 
+    /// Generate a small JPEG thumbnail (256px) for an image file.
+    /// Returns the path to the thumbnail file, or empty string on failure.
+    fn generate_thumbnail(source: &Path, thumb_dir: &Path) -> String {
+        use image::GenericImageView;
+
+        // Only generate for image types
+        let ext = source.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp");
+        if !is_image { return String::new(); }
+
+        // Try to open and resize
+        match image::open(source) {
+            Ok(img) => {
+                let thumb = img.thumbnail(256, 256);
+                let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
+                let thumb_path = thumb_dir.join(&thumb_name);
+
+                // Save as JPEG quality 70
+                match thumb.save_with_format(&thumb_path, image::ImageFormat::Jpeg) {
+                    Ok(_) => thumb_path.to_string_lossy().to_string(),
+                    Err(_) => String::new(),
+                }
+            }
+            Err(_) => String::new(),
+        }
+    }
+
     fn obfuscate_index(data: &str) -> String {
         use base64::Engine;
         base64::engine::general_purpose::STANDARD.encode(data.as_bytes())
@@ -276,6 +309,9 @@ impl VaultManager {
             return 0;
         }
 
+        let thumb_dir = self.vault_root.join(".thumbs");
+        let _ = fs::create_dir_all(&thumb_dir);
+
         let now = chrono_now();
         let mut count = 0;
 
@@ -292,6 +328,9 @@ impl VaultManager {
             let size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
             let mime_hint = Self::guess_mime(&original_name);
             let cat = if category == "auto" { &mime_hint } else { category };
+
+            // Generate thumbnail BEFORE moving (source still accessible)
+            let thumb_path = Self::generate_thumbnail(source, &thumb_dir);
 
             let fake_name = self.generate_fake_name();
             let hidden_path = hidden_dir.join(&fake_name);
@@ -313,6 +352,7 @@ impl VaultManager {
                 size,
                 hidden_at: now.clone(),
                 hidden_path: hidden_path.to_string_lossy().to_string(),
+                thumb_path,
                 mime_hint,
                 original_category: None,
                 tag: String::new(),
@@ -390,6 +430,11 @@ impl VaultManager {
             }
         }
 
+        // Generate thumbnail for images
+        let thumb_dir = self.vault_root.join(".thumbs");
+        let _ = fs::create_dir_all(&thumb_dir);
+        let thumb_path = Self::generate_thumbnail(&hidden_path, &thumb_dir);
+
         let id = Uuid::new_v4().to_string();
         let now = chrono_now();
 
@@ -400,6 +445,7 @@ impl VaultManager {
             size,
             hidden_at: now.clone(),
             hidden_path: hidden_path.to_string_lossy().to_string(),
+            thumb_path: thumb_path.clone(),
             mime_hint: mime_hint.clone(),
             original_category: None,
             tag: String::new(),
@@ -599,6 +645,32 @@ impl VaultManager {
         Ok(base64::engine::general_purpose::STANDARD.encode(&data))
     }
 
+    /// Get the pre-generated thumbnail as base64 JPEG. Much faster than get_file_base64.
+    pub fn get_thumbnail(&self, file_id: &str) -> Result<String, String> {
+        let entry = self.index.entries.get(file_id)
+            .ok_or("File not found")?;
+
+        if entry.thumb_path.is_empty() {
+            return Err("No thumbnail available".to_string());
+        }
+
+        let path = Path::new(&entry.thumb_path);
+        if !path.exists() {
+            return Err("Thumbnail file missing".to_string());
+        }
+
+        let data = fs::read(path).map_err(|e| e.to_string())?;
+        use base64::Engine;
+        Ok(base64::engine::general_purpose::STANDARD.encode(&data))
+    }
+
+    /// Check if a thumbnail exists for a file
+    pub fn has_thumbnail(&self, file_id: &str) -> bool {
+        self.index.entries.get(file_id)
+            .map(|e| !e.thumb_path.is_empty() && Path::new(&e.thumb_path).exists())
+            .unwrap_or(false)
+    }
+
     pub fn save_note(&mut self, title: &str, content: &str) -> Result<VaultFile, String> {
         let hidden_dir = self.generate_hidden_path();
         fs::create_dir_all(&hidden_dir).map_err(|e| e.to_string())?;
@@ -619,6 +691,7 @@ impl VaultManager {
             size,
             hidden_at: now.clone(),
             hidden_path: hidden_path.to_string_lossy().to_string(),
+            thumb_path: String::new(),
             mime_hint: "text".to_string(),
             original_category: None,
             tag: String::new(),

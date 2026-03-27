@@ -144,6 +144,18 @@ fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> Result<(), Str
 }
 
 #[tauri::command]
+fn get_thumbnail(state: State<AppState>, file_id: String) -> Result<String, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_thumbnail(&file_id)
+}
+
+#[tauri::command]
+fn has_thumbnail(state: State<AppState>, file_id: String) -> Result<bool, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(vault.has_thumbnail(&file_id))
+}
+
+#[tauri::command]
 fn debug_info(state: State<AppState>) -> Result<String, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     Ok(vault.debug_info())
@@ -240,6 +252,8 @@ pub fn run() {
             create_tag,
             delete_tag,
             delete_files,
+            get_thumbnail,
+            has_thumbnail,
             debug_info,
             set_pin,
             verify_pin,
