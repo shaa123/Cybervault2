@@ -300,9 +300,9 @@ pub fn run() {
                     return;
                 };
 
-                // Lock mutex only to get the path, then release
-                let (file_path, original_name) = {
-                    let mut v = match vault.lock() {
+                // Lock mutex BRIEFLY to get paths only, then release
+                let (thumb_path_result, hidden_path, original_name, vault_root) = {
+                    let v = match vault.lock() {
                         Ok(v) => v,
                         Err(_) => {
                             responder.respond(
@@ -314,37 +314,74 @@ pub fn run() {
                             return;
                         }
                     };
+                    let tp = if kind == "thumb" { v.get_thumb_file_path(file_id).ok() } else { None };
+                    let hp = v.get_file_path(file_id).ok();
+                    let name = v.get_original_name(file_id).unwrap_or_default();
+                    let root = v.vault_root_path().to_path_buf();
+                    (tp, hp, name, root)
+                }; // Mutex released immediately
 
-                    let fp = if kind == "thumb" {
-                        // Try existing thumb first
-                        match v.get_thumb_file_path(file_id) {
-                            Ok(p) => Ok(p),
-                            Err(_) => {
-                                // No thumb — generate on-the-fly
-                                v.generate_thumb_for_file(file_id)
+                let file_path;
+                let mut is_animated = false;
+
+                if kind == "file" {
+                    file_path = match hidden_path {
+                        Some(p) => p,
+                        None => {
+                            responder.respond(
+                                tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
+                            );
+                            return;
+                        }
+                    };
+                } else {
+                    // Thumb request
+                    let name_lower = original_name.to_lowercase();
+                    is_animated = name_lower.ends_with(".gif") || name_lower.ends_with(".webm")
+                        || name_lower.ends_with(".mp4");
+
+                    if is_animated {
+                        // Animated formats: serve the original file directly (no static thumb)
+                        file_path = match hidden_path {
+                            Some(p) => p,
+                            None => {
+                                responder.respond(
+                                    tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
+                                );
+                                return;
                             }
+                        };
+                    } else if let Some(tp) = thumb_path_result {
+                        // Existing thumb
+                        file_path = tp;
+                    } else if let Some(hp) = hidden_path {
+                        // No thumb — generate OUTSIDE the mutex lock
+                        let thumb_dir = vault_root.join(".thumbs");
+                        let _ = std::fs::create_dir_all(&thumb_dir);
+
+                        let generated = vault::VaultManager::generate_thumbnail_static(
+                            std::path::Path::new(&hp), &thumb_dir
+                        );
+
+                        if generated.is_empty() {
+                            // Can't generate (not an image) — serve original
+                            file_path = hp;
+                        } else {
+                            // Save thumb path back to index (brief lock)
+                            if let Ok(mut v) = vault.lock() {
+                                let _ = v.set_thumb_path(file_id, &generated);
+                            }
+                            file_path = generated;
                         }
                     } else {
-                        v.get_file_path(file_id)
-                    };
-                    let name = v.get_original_name(file_id).unwrap_or_default();
-                    (fp, name)
-                }; // Mutex released here
-
-                let file_path = match file_path {
-                    Ok(p) => p,
-                    Err(_) => {
                         responder.respond(
-                            tauri::http::Response::builder()
-                                .status(404)
-                                .body(b"File not found".to_vec())
-                                .unwrap()
+                            tauri::http::Response::builder().status(404).body(b"Not found".to_vec()).unwrap()
                         );
                         return;
                     }
                 };
 
-                let mime = if kind == "thumb" {
+                let mime = if kind == "thumb" && !is_animated {
                     "image/jpeg"
                 } else {
                     guess_mime_type(&original_name)

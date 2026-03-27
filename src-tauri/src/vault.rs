@@ -211,6 +211,20 @@ impl VaultManager {
 
     /// Generate a small JPEG thumbnail (256px) for an image file.
     /// Returns the path to the thumbnail file, or empty string on failure.
+    /// Set thumb_path for a file (called after generating thumb outside the lock)
+    pub fn set_thumb_path(&mut self, file_id: &str, thumb_path: &str) -> Result<(), String> {
+        if let Some(entry) = self.index.entries.get_mut(file_id) {
+            entry.thumb_path = thumb_path.to_string();
+            self.save_index()?;
+        }
+        Ok(())
+    }
+
+    /// Public static version for use outside the lock
+    pub fn generate_thumbnail_static(source: &Path, thumb_dir: &Path) -> String {
+        Self::generate_thumbnail(source, thumb_dir)
+    }
+
     /// Try to generate a thumbnail from any file. Detects format from file
     /// header bytes, not extension (hidden files have fake extensions like .sys).
     fn generate_thumbnail(source: &Path, thumb_dir: &Path) -> String {
