@@ -846,9 +846,19 @@
   border-color: var(--red);
 }
 
+.media-overlay-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
 .media-overlay img {
   max-width: 90vw;
   max-height: 80vh;
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: 12px;
   border: 1px solid var(--border);

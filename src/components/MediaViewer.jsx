@@ -4,11 +4,17 @@ import { vaultFileUrl } from "../hooks/useThumbnails";
 export default function MediaViewer({ file, files, onClose, onNavigate }) {
   const [slideshow, setSlideshow] = useState(false);
   const [slideshowInterval, setSlideshowInterval] = useState(3);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const timerRef = useRef(null);
 
   const isImage = file?.mime_hint === "image";
   const isVideo = file?.mime_hint === "video";
   const src = file ? vaultFileUrl(file.id) : null;
+
+  // Reset loading state when file changes
+  useEffect(() => {
+    setImgLoaded(false);
+  }, [file?.id]);
 
   // Keyboard
   useEffect(() => {
@@ -59,11 +65,22 @@ export default function MediaViewer({ file, files, onClose, onNavigate }) {
         </>
       )}
 
-      <div onClick={e => e.stopPropagation()}>
+      <div className="media-overlay-content" onClick={e => e.stopPropagation()}>
         {src && isImage ? (
-          <img src={src} alt={file.original_name} />
+          <>
+            {!imgLoaded && (
+              <div style={{ color: "var(--text3)", fontSize: 16, letterSpacing: 2 }}>LOADING...</div>
+            )}
+            <img
+              key={file.id}
+              src={src}
+              alt={file.original_name}
+              onLoad={() => setImgLoaded(true)}
+              style={{ display: imgLoaded ? "block" : "none" }}
+            />
+          </>
         ) : src && isVideo ? (
-          <video src={src} controls autoPlay />
+          <video key={file.id} src={src} controls autoPlay />
         ) : (
           <div style={{ color: "var(--text3)", fontSize: 16 }}>PREVIEW UNAVAILABLE</div>
         )}
