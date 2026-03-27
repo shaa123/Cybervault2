@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 10px 16px;
+  padding: 6px 14px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -91,8 +91,8 @@
 .nav-tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 5px 12px;
   border-radius: 8px;
   font-size: 16px;
   font-weight: 600;
@@ -283,14 +283,14 @@
 .fl-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 8px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .fl-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 2px;
   color: var(--list-color, var(--cyan));
@@ -298,10 +298,10 @@
 }
 
 .fl-btn {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 1.5px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 8px;
   transition: all 0.15s;
 }
@@ -339,7 +339,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 24px;
+  padding: 5px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   overflow-x: auto;
@@ -1371,8 +1371,8 @@
 
 .search-bar {
   display: flex;
-  gap: 8px;
-  padding: 8px 24px;
+  gap: 6px;
+  padding: 5px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
