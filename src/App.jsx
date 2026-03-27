@@ -99,8 +99,6 @@ export default function App() {
 
   useEffect(() => {
     refreshStats();
-    // Generate thumbnails for any images that don't have them yet
-    invoke("regenerate_thumbnails").catch(() => {});
   }, [refreshStats]);
 
   useEffect(() => {
