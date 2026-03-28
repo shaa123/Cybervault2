@@ -170,3 +170,54 @@ input, textarea { font-family: var(--mono); font-size: 1rem; outline: none; bord
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Media overlay open */
+@keyframes overlay-open {
+  from { opacity: 0; backdrop-filter: blur(0); }
+  to   { opacity: 1; backdrop-filter: blur(8px); }
+}
+
+/* Media image zoom in */
+@keyframes media-zoom-in {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* Category popup open */
+@keyframes popup-open {
+  from { transform: scale(0.9) translateY(10px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* Pulse glow for important elements */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 5px var(--cyan), 0 0 10px rgba(0, 229, 255, 0.2); }
+  50%      { box-shadow: 0 0 15px var(--cyan), 0 0 30px rgba(0, 229, 255, 0.3), 0 0 45px rgba(0, 229, 255, 0.1); }
+}
+
+/* Glitch text effect */
+@keyframes glitch-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.8; transform: translateX(2px); }
+  94% { opacity: 1; transform: translateX(-1px); }
+  95% { opacity: 0.9; }
+  96% { opacity: 1; transform: translateX(0); }
+}
+
+/* Upload progress shimmer */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Storage bar fill */
+@keyframes bar-fill {
+  from { width: 0; }
+}
+
+/* Error flash */
+@keyframes error-flash {
+  0%, 100% { color: var(--red); }
+  50% { color: #ff8888; text-shadow: 0 0 10px var(--red); }
+}

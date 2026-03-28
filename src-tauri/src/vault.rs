@@ -257,7 +257,7 @@ impl VaultManager {
             Err(_) => return String::new(),
         };
 
-        let thumb = img.thumbnail(256, 256);
+        let thumb = img.thumbnail(512, 512);
         let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
         let thumb_path = thumb_dir.join(&thumb_name);
 
@@ -944,7 +944,7 @@ impl VaultManager {
             }
         };
 
-        let thumb = img.thumbnail(256, 256);
+        let thumb = img.thumbnail(512, 512);
         let thumb_name = format!("t_{:016x}.jpg", rand::thread_rng().gen::<u64>());
         let thumb_path = thumb_dir.join(&thumb_name);
 

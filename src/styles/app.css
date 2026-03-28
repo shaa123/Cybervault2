@@ -128,7 +128,12 @@
   position: relative;
 }
 
-.nav-tab:hover { opacity: 0.85; background: var(--surface); }
+.nav-tab:hover {
+  opacity: 0.85;
+  background: var(--surface);
+  text-shadow: 0 0 8px var(--tab-color, var(--text3));
+  transform: translateY(-1px);
+}
 
 .nav-tab.active {
   opacity: 1;
@@ -217,10 +222,12 @@
 }
 
 .dash-header h1 {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 3px;
-  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #fff;
+  text-shadow: 0 0 10px var(--cyan), 0 0 20px rgba(0, 229, 255, 0.2);
+  animation: glitch-flicker 8s infinite;
 }
 
 .dash-header p {
@@ -370,7 +377,8 @@
 .dash-storage-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 0.3s;
+  animation: bar-fill 1s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px currentColor;
 }
 
 .dash-storage-detail {
@@ -583,13 +591,15 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  transition: all 0.15s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: left;
 }
 
 .grid-tile:hover {
   border-color: var(--list-color, var(--cyan));
-  box-shadow: 0 0 16px color-mix(in srgb, var(--list-color, var(--cyan)) 12%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--list-color, var(--cyan)) 20%, transparent),
+              0 8px 25px rgba(0, 0, 0, 0.3);
+  transform: translateY(-4px) scale(1.03);
 }
 
 .grid-tile.selected {
@@ -733,6 +743,8 @@
 .fl-row:hover {
   background: var(--surface);
   border-color: var(--border);
+  transform: translateX(4px);
+  box-shadow: -3px 0 0 var(--list-color, var(--cyan));
 }
 
 .fl-row.clickable { cursor: pointer; }
@@ -918,6 +930,7 @@
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(8px);
+  animation: overlay-open 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .media-overlay-top {
@@ -958,6 +971,7 @@
 
 .media-overlay-content {
   display: flex;
+  animation: media-zoom-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   align-items: center;
   justify-content: center;
 }
@@ -1267,6 +1281,7 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 24px;
+  animation: popup-open 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   min-width: 340px;
   max-width: 420px;
 }
@@ -1485,6 +1500,8 @@
   font-size: 14px;
   color: var(--red);
   letter-spacing: 2px;
+  animation: error-flash 1s ease infinite;
+  text-shadow: 0 0 8px var(--red);
 }
 
 .lock-keypad {
@@ -1545,10 +1562,12 @@
 
 .upload-progress-fill {
   height: 100%;
-  background: var(--cyan);
+  background: linear-gradient(90deg, var(--cyan), var(--magenta), var(--cyan));
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease infinite;
   border-radius: 4px;
   transition: width 0.2s;
-  box-shadow: 0 0 8px var(--cyan);
+  box-shadow: 0 0 12px var(--cyan);
 }
 
 .upload-progress-text {
