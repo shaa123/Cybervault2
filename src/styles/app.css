@@ -195,7 +195,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  animation: slide-in-up 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slide-in-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .nav-total {
@@ -245,13 +245,13 @@
 
 /* Stagger entrance for dashboard cards */
 .dash-card {
-  animation: stagger-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: stagger-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .dash-card:nth-child(1) { animation-delay: 0.05s; }
-.dash-card:nth-child(2) { animation-delay: 0.1s; }
-.dash-card:nth-child(3) { animation-delay: 0.15s; }
-.dash-card:nth-child(4) { animation-delay: 0.2s; }
-.dash-card:nth-child(5) { animation-delay: 0.25s; }
+.dash-card:nth-child(2) { animation-delay: 0.12s; }
+.dash-card:nth-child(3) { animation-delay: 0.19s; }
+.dash-card:nth-child(4) { animation-delay: 0.26s; }
+.dash-card:nth-child(5) { animation-delay: 0.33s; }
 
 .dash-card {
   position: relative;
@@ -431,8 +431,9 @@
 }
 
 .fl-btn-primary:hover {
-  background: rgba(0, 229, 255, 0.18);
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.15);
+  background: rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3), 0 0 40px rgba(0, 229, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 .fl-btn-danger {
@@ -441,7 +442,11 @@
   border: 1px solid rgba(255, 82, 82, 0.2);
 }
 
-.fl-btn-danger:hover { background: rgba(255, 82, 82, 0.18); }
+.fl-btn-danger:hover {
+  background: rgba(255, 82, 82, 0.25);
+  box-shadow: 0 0 20px rgba(255, 82, 82, 0.3), 0 0 40px rgba(255, 82, 82, 0.1);
+  transform: translateY(-1px);
+}
 
 .fl-count {
   font-size: 16px;
@@ -591,20 +596,23 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   text-align: left;
 }
 
 .grid-tile:hover {
   border-color: var(--list-color, var(--cyan));
-  box-shadow: 0 0 20px color-mix(in srgb, var(--list-color, var(--cyan)) 20%, transparent),
-              0 8px 25px rgba(0, 0, 0, 0.3);
-  transform: translateY(-4px) scale(1.03);
+  box-shadow: 0 0 25px color-mix(in srgb, var(--list-color, var(--cyan)) 30%, transparent),
+              0 0 50px color-mix(in srgb, var(--list-color, var(--cyan)) 10%, transparent),
+              0 10px 30px rgba(0, 0, 0, 0.4);
+  transform: translateY(-6px) scale(1.04);
 }
 
 .grid-tile.selected {
   border-color: var(--cyan);
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.15);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3), 0 0 40px rgba(0, 229, 255, 0.1);
+  animation: pulse-glow 2s ease-in-out infinite;
+  transform: scale(0.98);
 }
 
 .grid-tile:hover .grid-tile-actions { opacity: 1; }

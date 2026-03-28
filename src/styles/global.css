@@ -66,158 +66,191 @@ button {
   color: inherit;
   transition: transform 0.12s ease;
 }
-button:active { animation: btn-pop 0.25s ease; }
+button:active {
+  animation: btn-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
 input, textarea { font-family: var(--mono); font-size: 1rem; outline: none; border: none; background: none; color: inherit; }
 
 /* ═══════════════════════════════════════════════
-   CYBERPUNK ANIMATIONS
+   CYBERPUNK ANIMATIONS — DRAMATIC
    ═══════════════════════════════════════════════ */
 
-/* Button pop on click */
+/* Button pop — BIG scale bounce */
 @keyframes btn-pop {
   0%   { transform: scale(1); }
-  40%  { transform: scale(0.92); }
-  70%  { transform: scale(1.08); }
+  30%  { transform: scale(0.85); }
+  60%  { transform: scale(1.15); }
+  80%  { transform: scale(0.97); }
   100% { transform: scale(1); }
 }
 
 @keyframes btn-pulse-ring {
-  0%   { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.5); }
-  70%  { box-shadow: 0 0 0 12px rgba(0, 229, 255, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.6); }
+  100% { box-shadow: 0 0 0 20px rgba(0, 229, 255, 0); }
 }
 
-/* Keypad press */
+/* Keypad press — dramatic squish */
 @keyframes key-press {
-  0%   { transform: scale(1); }
-  30%  { transform: scale(0.88); }
-  60%  { transform: scale(1.06); }
-  100% { transform: scale(1); }
+  0%   { transform: scale(1); filter: brightness(1); }
+  20%  { transform: scale(0.8); filter: brightness(1.5); }
+  50%  { transform: scale(1.1); filter: brightness(1.2); }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 
 @keyframes key-glow-flash {
   0%   { box-shadow: inset 0 0 0 1px var(--border); }
-  30%  { box-shadow: inset 0 0 0 1px var(--cyan), 0 0 15px rgba(0, 229, 255, 0.4); }
+  20%  { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 25px rgba(0, 229, 255, 0.6), 0 0 50px rgba(0, 229, 255, 0.2); }
   100% { box-shadow: inset 0 0 0 1px var(--border); }
 }
 
-/* PIN dot fill */
+/* PIN dot — dramatic pop with overshoot */
 @keyframes dot-fill {
-  0%   { transform: scale(0); }
-  50%  { transform: scale(1.5); }
+  0%   { transform: scale(0); opacity: 0; }
+  40%  { transform: scale(1.8); opacity: 1; }
+  60%  { transform: scale(0.9); }
+  80%  { transform: scale(1.2); }
   100% { transform: scale(1); }
 }
 
-/* PIN error shake */
+/* PIN error — violent shake */
 @keyframes pin-shake {
   0%, 100% { transform: translateX(0); }
-  10% { transform: translateX(-8px); }
-  20% { transform: translateX(8px); }
-  30% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  50% { transform: translateX(-4px); }
-  60% { transform: translateX(4px); }
+  8%  { transform: translateX(-12px) rotate(-2deg); }
+  16% { transform: translateX(12px) rotate(2deg); }
+  24% { transform: translateX(-10px) rotate(-1deg); }
+  32% { transform: translateX(10px) rotate(1deg); }
+  40% { transform: translateX(-8px); }
+  48% { transform: translateX(8px); }
+  56% { transform: translateX(-5px); }
+  64% { transform: translateX(5px); }
+  72% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
 }
 
-/* Lock screen unlock */
+/* Lock screen unlock — dramatic blur+zoom+flash */
 @keyframes lock-unlock {
-  0%   { opacity: 1; transform: scale(1); filter: blur(0); }
-  40%  { opacity: 1; transform: scale(1.02); filter: brightness(1.5); }
-  100% { opacity: 0; transform: scale(1.1); filter: blur(12px) brightness(2); }
+  0%   { opacity: 1; transform: scale(1); filter: blur(0) brightness(1); }
+  30%  { opacity: 1; transform: scale(1.05); filter: blur(0) brightness(2); }
+  60%  { opacity: 0.5; transform: scale(1.15); filter: blur(8px) brightness(3); }
+  100% { opacity: 0; transform: scale(1.3); filter: blur(20px) brightness(5); }
 }
 
-/* App reveal after unlock */
+/* App reveal — zoom + blur clear */
 @keyframes app-reveal {
-  0%   { opacity: 0; transform: scale(0.97); filter: blur(4px); }
+  0%   { opacity: 0; transform: scale(0.93); filter: blur(8px); }
+  50%  { opacity: 0.7; filter: blur(2px); }
   100% { opacity: 1; transform: scale(1); filter: blur(0); }
 }
 
-/* Page slide transitions */
+/* Page slide — dramatic entrance */
 @keyframes slide-in-up {
-  from { transform: translateY(15px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
+  0%   { transform: translateY(30px); opacity: 0; filter: blur(3px); }
+  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
 }
 
 @keyframes slide-in-right {
-  from { transform: translateX(20px); opacity: 0; }
+  from { transform: translateX(40px); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
 
-/* Ripple expand */
+/* Ripple */
 @keyframes ripple-expand {
-  to { transform: scale(4); opacity: 0; }
+  to { transform: scale(6); opacity: 0; }
 }
 
-/* Rainbow border rotation */
-@property --border-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
+/* Rainbow border */
+@keyframes rainbow-shift {
+  0%   { background-position: 0 0, 0% 50%; }
+  50%  { background-position: 0 0, 100% 50%; }
+  100% { background-position: 0 0, 0% 50%; }
 }
 
-@keyframes rainbow-rotate {
-  to { --border-angle: 360deg; }
-}
-
-/* Neon text pulse */
+/* Neon text — BRIGHT pulse */
 @keyframes neon-text-pulse {
-  0%, 100% { text-shadow: 0 0 4px var(--cyan), 0 0 11px var(--cyan), 0 0 19px rgba(0, 229, 255, 0.3); }
-  50%      { text-shadow: 0 0 2px var(--cyan), 0 0 5px rgba(0, 229, 255, 0.4); }
+  0%, 100% {
+    text-shadow: 0 0 7px var(--cyan), 0 0 15px var(--cyan), 0 0 30px var(--cyan), 0 0 60px rgba(0, 229, 255, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 3px var(--cyan), 0 0 8px rgba(0, 229, 255, 0.5);
+  }
 }
 
-/* Stagger children entrance */
+/* Stagger entrance — with scale */
 @keyframes stagger-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(15px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Media overlay open */
 @keyframes overlay-open {
-  from { opacity: 0; backdrop-filter: blur(0); }
-  to   { opacity: 1; backdrop-filter: blur(8px); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* Media image zoom in */
+/* Media image zoom — dramatic */
 @keyframes media-zoom-in {
-  from { transform: scale(0.85); opacity: 0; }
-  to   { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(0.7); opacity: 0; filter: blur(5px); }
+  60%  { transform: scale(1.03); opacity: 1; filter: blur(0); }
+  100% { transform: scale(1); }
 }
 
-/* Category popup open */
+/* Popup bounce open */
 @keyframes popup-open {
-  from { transform: scale(0.9) translateY(10px); opacity: 0; }
-  to   { transform: scale(1) translateY(0); opacity: 1; }
+  0%   { transform: scale(0.7) translateY(20px); opacity: 0; }
+  60%  { transform: scale(1.05) translateY(-3px); opacity: 1; }
+  100% { transform: scale(1) translateY(0); }
 }
 
-/* Pulse glow for important elements */
+/* Pulse glow — breathing */
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 5px var(--cyan), 0 0 10px rgba(0, 229, 255, 0.2); }
-  50%      { box-shadow: 0 0 15px var(--cyan), 0 0 30px rgba(0, 229, 255, 0.3), 0 0 45px rgba(0, 229, 255, 0.1); }
+  0%, 100% { box-shadow: 0 0 8px var(--cyan), 0 0 20px rgba(0, 229, 255, 0.3); }
+  50%      { box-shadow: 0 0 20px var(--cyan), 0 0 40px rgba(0, 229, 255, 0.4), 0 0 60px rgba(0, 229, 255, 0.15); }
 }
 
-/* Glitch text effect */
+/* Glitch flicker */
 @keyframes glitch-flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.8; transform: translateX(2px); }
-  94% { opacity: 1; transform: translateX(-1px); }
-  95% { opacity: 0.9; }
-  96% { opacity: 1; transform: translateX(0); }
+  0%, 89%, 91%, 93%, 95%, 97%, 100% { opacity: 1; transform: translateX(0); }
+  90% { opacity: 0.8; transform: translateX(3px); text-shadow: -3px 0 var(--magenta), 3px 0 var(--cyan); }
+  92% { opacity: 0.9; transform: translateX(-2px); text-shadow: 2px 0 var(--magenta), -2px 0 var(--cyan); }
+  94% { opacity: 0.85; transform: translateX(1px); }
+  96% { opacity: 0.95; transform: translateX(-1px); text-shadow: 1px 0 var(--magenta), -1px 0 var(--cyan); }
 }
 
-/* Upload progress shimmer */
+/* Shimmer — rainbow */
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
-/* Storage bar fill */
+/* Bar fill */
 @keyframes bar-fill {
   from { width: 0; }
 }
 
-/* Error flash */
+/* Error flash — dramatic red pulse */
 @keyframes error-flash {
-  0%, 100% { color: var(--red); }
-  50% { color: #ff8888; text-shadow: 0 0 10px var(--red); }
+  0%, 100% { color: var(--red); text-shadow: 0 0 5px var(--red); }
+  50% { color: #ff9999; text-shadow: 0 0 20px var(--red), 0 0 40px rgba(255, 82, 82, 0.4); }
+}
+
+/* Logo pulse */
+@keyframes logo-pulse {
+  0%, 100% { box-shadow: 0 0 30px var(--cyan), 0 0 60px rgba(0, 229, 255, 0.4); transform: scale(1); }
+  50%      { box-shadow: 0 0 10px var(--cyan), 0 0 20px rgba(0, 229, 255, 0.15); transform: scale(0.92); }
+}
+
+/* Neon bright title */
+@keyframes neon-text-bright {
+  0%, 100% {
+    text-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan), 0 0 40px var(--cyan), 0 0 80px rgba(0, 229, 255, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 5px var(--cyan), 0 0 10px rgba(0, 229, 255, 0.3);
+  }
+}
+
+/* Tile hover glow border animation */
+@keyframes border-glow {
+  0%, 100% { border-color: var(--list-color, var(--cyan)); }
+  50% { border-color: var(--magenta); }
 }
