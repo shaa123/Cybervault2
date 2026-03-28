@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // vaultFileUrl no longer needed — video frame capture uses invoke
 
 /** Capture first frame of a video via invoke (avoids protocol deadlock) */
@@ -111,8 +112,10 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
 
   // Background
   const [bgType, setBgType] = useState("");
+  const [bgData, setBgData] = useState("");
   const [bgOpacity, setBgOpacity] = useState(0.3);
   const [bgFit, setBgFit] = useState("cover");
+  const [bgInterval, setBgInterval] = useState(0);
 
   useEffect(() => {
     invoke("debug_info").then(setDebugText).catch(e => setDebugText("Error: " + e));
@@ -120,8 +123,10 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     invoke("get_settings").then(s => {
       setAutoLock(s.auto_lock_secs || 0);
       setBgType(s.bg_type || "");
+      setBgData(s.bg_data || "");
       setBgOpacity(s.bg_opacity || 0.3);
       setBgFit(s.bg_fit || "cover");
+      setBgInterval(s.slideshow_interval || 0);
     }).catch(() => {});
   }, []);
 
@@ -150,6 +155,18 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     try {
       const s = await invoke("get_settings");
       s.auto_lock_secs = secs;
+      await invoke("update_settings", { settings: s });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSaveBg = async (type, data, opacity, fit, interval) => {
+    try {
+      const s = await invoke("get_settings");
+      s.bg_type = type;
+      s.bg_data = data;
+      s.bg_opacity = opacity;
+      s.bg_fit = fit;
+      s.slideshow_interval = interval;
       await invoke("update_settings", { settings: s });
     } catch (e) { console.error(e); }
   };
@@ -326,23 +343,73 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                   <span className="settings-about-value">{bgType || "NONE"}</span>
                 </div>
                 <div className="settings-about-row">
+                  <button className="fl-btn fl-btn-primary" onClick={async () => {
+                    const sel = await openDialog({ multiple: false, filters: [
+                      { name: "Image", extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"] },
+                      { name: "Video", extensions: ["mp4", "webm", "mkv", "avi", "mov"] },
+                    ]});
+                    if (sel) {
+                      const p = sel.path || sel;
+                      const isVid = /\.(mp4|webm|mkv|avi|mov)$/i.test(p);
+                      setBgType(isVid ? "video" : "image");
+                      setBgData(p);
+                      handleSaveBg(isVid ? "video" : "image", p, bgOpacity, bgFit, bgInterval);
+                    }
+                  }}>SELECT FILE</button>
+                  {bgType && (
+                    <button className="fl-btn fl-btn-danger" onClick={() => {
+                      setBgType(""); setBgData("");
+                      handleSaveBg("", "", bgOpacity, bgFit, bgInterval);
+                    }}>REMOVE</button>
+                  )}
+                </div>
+                {bgData && (
+                  <div style={{ fontSize: 12, color: "var(--text3)", wordBreak: "break-all", padding: "2px 0" }}>
+                    {bgData}
+                  </div>
+                )}
+                <div className="settings-about-row">
                   <span className="settings-about-label">OPACITY</span>
                   <input
                     type="range" min="0" max="1" step="0.05"
                     value={bgOpacity}
-                    onChange={e => setBgOpacity(parseFloat(e.target.value))}
+                    onChange={e => {
+                      const v = parseFloat(e.target.value);
+                      setBgOpacity(v);
+                      handleSaveBg(bgType, bgData, v, bgFit, bgInterval);
+                    }}
                     style={{ width: 120 }}
                   />
                   <span className="settings-about-value">{Math.round(bgOpacity * 100)}%</span>
                 </div>
                 <div className="settings-about-row">
                   <span className="settings-about-label">FIT</span>
-                  <select className="sort-select" value={bgFit} onChange={e => setBgFit(e.target.value)}
-                    style={{ minWidth: 100 }}>
+                  <select className="sort-select" value={bgFit} onChange={e => {
+                    setBgFit(e.target.value);
+                    handleSaveBg(bgType, bgData, bgOpacity, e.target.value, bgInterval);
+                  }} style={{ minWidth: 100 }}>
                     <option value="cover">COVER</option>
                     <option value="contain">CONTAIN</option>
                     <option value="fill">FILL</option>
                     <option value="stretch">STRETCH</option>
+                  </select>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">SLIDESHOW INTERVAL</span>
+                  <select className="sort-select" value={bgInterval} onChange={e => {
+                    const v = parseInt(e.target.value);
+                    setBgInterval(v);
+                    handleSaveBg(bgType, bgData, bgOpacity, bgFit, v);
+                  }} style={{ minWidth: 120 }}>
+                    <option value={0}>OFF</option>
+                    <option value={1}>1 SECOND</option>
+                    <option value={3}>3 SECONDS</option>
+                    <option value={5}>5 SECONDS</option>
+                    <option value={10}>10 SECONDS</option>
+                    <option value={30}>30 SECONDS</option>
+                    <option value={60}>1 MINUTE</option>
+                    <option value={300}>5 MINUTES</option>
+                    <option value={600}>10 MINUTES</option>
                   </select>
                 </div>
               </div>
@@ -386,43 +453,13 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
             <div className="settings-section">
               <div className="settings-section-title">AUTO-LOCK TIMEOUT</div>
               <div className="settings-about">
-                <div className="settings-about-row" style={{ gap: 6 }}>
-                  {AUTO_LOCK_OPTIONS.map(o => (
-                    <button
-                      key={o.value}
-                      className={`tag-chip ${autoLock === o.value ? "active" : ""}`}
-                      onClick={() => handleAutoLockChange(o.value)}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Vault Storage */}
-            <div className="settings-section">
-              <div className="settings-section-title">VAULT STORAGE</div>
-              <div className="settings-cards">
-                <div className="settings-card">
-                  <div className="settings-card-label">TOTAL</div>
-                  <div className="settings-card-value cyan">{stats.total_files}</div>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-card-label">IMAGES</div>
-                  <div className="settings-card-value">{stats.images}</div>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-card-label">VIDEOS</div>
-                  <div className="settings-card-value">{stats.videos}</div>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-card-label">DOCS</div>
-                  <div className="settings-card-value">{stats.documents}</div>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-card-label">NOTES</div>
-                  <div className="settings-card-value">{stats.notes}</div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">LOCK AFTER</span>
+                  <select className="sort-select" value={autoLock} onChange={e => handleAutoLockChange(parseInt(e.target.value))}>
+                    {AUTO_LOCK_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -520,6 +557,32 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         {/* ── HELP / INFO ── */}
         {openTab === "help" && (
           <>
+            <div className="settings-section">
+              <div className="settings-section-title">VAULT STORAGE</div>
+              <div className="settings-cards">
+                <div className="settings-card">
+                  <div className="settings-card-label">TOTAL</div>
+                  <div className="settings-card-value cyan">{stats.total_files}</div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-label">IMAGES</div>
+                  <div className="settings-card-value">{stats.images}</div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-label">VIDEOS</div>
+                  <div className="settings-card-value">{stats.videos}</div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-label">DOCS</div>
+                  <div className="settings-card-value">{stats.documents}</div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-label">NOTES</div>
+                  <div className="settings-card-value">{stats.notes}</div>
+                </div>
+              </div>
+            </div>
+
             <div className="settings-section">
               <div className="settings-section-title">ABOUT</div>
               <div className="settings-about">

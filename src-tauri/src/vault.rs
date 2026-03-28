@@ -538,11 +538,13 @@ impl VaultManager {
             .filter(|e| {
                 if category == "all" {
                     e.category != "trash"
-                } else if category == "image" || category == "video" {
-                    // Use mime_hint for media types (files may have wrong category)
+                } else if category == "image" || category == "video" || category == "document" {
+                    // Use mime_hint for media/doc types (files may have wrong category)
                     e.mime_hint == category && e.category != "trash"
+                } else if category == "note" {
+                    (e.category == "note" || e.mime_hint == "text") && e.category != "trash"
                 } else {
-                    e.category == category
+                    e.category == category && e.category != "trash"
                 }
             })
             .map(|e| VaultFile {

@@ -8,7 +8,6 @@ import NoteEditor from "./components/NoteEditor";
 import MediaViewer from "./components/MediaViewer";
 import Settings from "./components/Settings";
 import LockScreen from "./components/LockScreen";
-import DiagBot from "./components/DiagBot";
 import AuditLog from "./components/AuditLog";
 import "./styles/app.css";
 
@@ -31,7 +30,6 @@ export default function App() {
   const [editingNote, setEditingNote] = useState(null);
   const [view, setView] = useState("list");
   const [viewingMedia, setViewingMedia] = useState(null);
-  const [diagBotOpen, setDiagBotOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
 
   // Check if PIN is set on startup
@@ -207,12 +205,6 @@ export default function App() {
           onDelete={deleteCurrentMedia}
         />
       )}
-
-      {/* DiagBot FAB + Panel */}
-      {!diagBotOpen && (
-        <button className="diagbot-fab" onClick={() => setDiagBotOpen(true)}>◆</button>
-      )}
-      <DiagBot open={diagBotOpen} onClose={() => setDiagBotOpen(false)} />
 
       {/* Audit Log */}
       <AuditLog open={auditOpen} onClose={() => setAuditOpen(false)} />

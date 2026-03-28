@@ -361,22 +361,22 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       {/* Search & Sort */}
       <SearchBar search={search} onSearch={setSearch} sort={sort} onSort={setSort} />
 
-      {/* Tag filter bar */}
+      {/* Tag filter dropdown */}
       {tags.length > 0 && (
         <div className="tag-bar">
-          <button className={`tag-chip ${activeTag === "" ? "active" : ""}`} onClick={() => setActiveTag("")}>
-            ALL ({files.length})
-          </button>
-          {tags.map(t => (
-            <button key={t} className={`tag-chip ${activeTag === t ? "active" : ""}`} onClick={() => setActiveTag(t)}>
-              {t} ({files.filter(f => f.tag === t).length})
-            </button>
-          ))}
-          {files.some(f => !f.tag) && (
-            <button className={`tag-chip ${activeTag === "__untagged" ? "active" : ""}`} onClick={() => setActiveTag("__untagged")}>
-              UNSORTED ({files.filter(f => !f.tag).length})
-            </button>
-          )}
+          <select
+            className="sort-select"
+            value={activeTag}
+            onChange={e => setActiveTag(e.target.value)}
+          >
+            <option value="">ALL ({files.length})</option>
+            {tags.map(t => (
+              <option key={t} value={t}>{t} ({files.filter(f => f.tag === t).length})</option>
+            ))}
+            {files.some(f => !f.tag) && (
+              <option value="__untagged">UNSORTED ({files.filter(f => !f.tag).length})</option>
+            )}
+          </select>
         </div>
       )}
 
