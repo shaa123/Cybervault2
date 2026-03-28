@@ -1,7 +1,69 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-// vaultFileUrl no longer needed — video frame capture uses invoke
+import { vaultThumbUrl } from "../hooks/useThumbnails";
+
+/** Vault file picker for selecting files as BG or slideshow */
+function VaultFilePicker({ mode, onSelect, onClose }) {
+  const [files, setFiles] = useState([]);
+  const [selected, setSelected] = useState(new Set());
+
+  useEffect(() => {
+    // Load all image files from vault
+    invoke("list_files", { category: "image" }).then(setFiles).catch(() => {});
+  }, []);
+
+  const toggle = (id) => {
+    if (mode === "bg") {
+      // Single select for static BG
+      setSelected(new Set([id]));
+    } else {
+      // Multi select for slideshow
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+    }
+  };
+
+  return (
+    <div className="cat-popup-overlay" onClick={onClose}>
+      <div className="cat-popup" onClick={e => e.stopPropagation()} style={{ minWidth: 500, maxWidth: 600, maxHeight: "70vh", display: "flex", flexDirection: "column" }}>
+        <div className="cat-popup-title">
+          {mode === "bg" ? "SELECT BACKGROUND IMAGE" : "SELECT SLIDESHOW IMAGES"}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10 }}>
+          {mode === "bg" ? "Pick one image from your vault" : `Pick multiple images (${selected.size} selected)`}
+        </div>
+        <div style={{ flex: 1, overflow: "auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, padding: "4px 0" }}>
+          {files.map(f => (
+            <button key={f.id} onClick={() => toggle(f.id)}
+              style={{
+                border: selected.has(f.id) ? "2px solid var(--cyan)" : "2px solid var(--border)",
+                borderRadius: 8, overflow: "hidden", background: "var(--surface2)", padding: 0, display: "flex", flexDirection: "column"
+              }}>
+              <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface)", display: "grid", placeItems: "center", overflow: "hidden" }}>
+                <img src={vaultThumbUrl(f.id)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={e => { e.target.style.display = "none"; }} />
+              </div>
+              <div style={{ padding: "3px 5px", fontSize: 10, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
+                {f.original_name}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="cat-popup-actions" style={{ marginTop: 10 }}>
+          <button className="fl-btn fl-btn-primary" onClick={() => onSelect([...selected])}
+            disabled={selected.size === 0}>
+            {mode === "bg" ? "SET AS BACKGROUND" : `SELECT ${selected.size} FILES`}
+          </button>
+          <button className="fl-btn fl-btn-muted" onClick={onClose}>CANCEL</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Capture first frame of a video via invoke (avoids protocol deadlock) */
 async function captureVideoFrame(fileId) {
@@ -110,12 +172,20 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
   const [restoreInput, setRestoreInput] = useState("");
   const [restoreMsg, setRestoreMsg] = useState("");
 
-  // Background
+  // Static Background
   const [bgType, setBgType] = useState("");
   const [bgData, setBgData] = useState("");
   const [bgOpacity, setBgOpacity] = useState(0.3);
   const [bgFit, setBgFit] = useState("cover");
-  const [bgInterval, setBgInterval] = useState(0);
+  // Slideshow
+  const [ssEnabled, setSsEnabled] = useState(false);
+  const [ssFileIds, setSsFileIds] = useState([]);
+  const [ssInterval, setSsInterval] = useState(5);
+  const [ssShuffle, setSsShuffle] = useState(false);
+  const [ssOpacity, setSsOpacity] = useState(0.3);
+  const [ssFit, setSsFit] = useState("cover");
+  // Vault picker
+  const [showVaultPicker, setShowVaultPicker] = useState(null);
 
   useEffect(() => {
     invoke("debug_info").then(setDebugText).catch(e => setDebugText("Error: " + e));
@@ -126,7 +196,12 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
       setBgData(s.bg_data || "");
       setBgOpacity(s.bg_opacity || 0.3);
       setBgFit(s.bg_fit || "cover");
-      setBgInterval(s.slideshow_interval || 0);
+      setSsEnabled(s.slideshow_enabled || false);
+      setSsFileIds(s.slideshow_file_ids || []);
+      setSsInterval(s.slideshow_interval || 5);
+      setSsShuffle(s.slideshow_shuffle || false);
+      setSsOpacity(s.slideshow_opacity || 0.3);
+      setSsFit(s.slideshow_fit || "cover");
     }).catch(() => {});
   }, []);
 
@@ -159,14 +234,23 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     } catch (e) { console.error(e); }
   };
 
-  const handleSaveBg = async (type, data, opacity, fit, interval) => {
+  const saveBgSettings = async (type, data, opacity, fit) => {
     try {
       const s = await invoke("get_settings");
-      s.bg_type = type;
-      s.bg_data = data;
-      s.bg_opacity = opacity;
-      s.bg_fit = fit;
+      s.bg_type = type; s.bg_data = data; s.bg_opacity = opacity; s.bg_fit = fit;
+      await invoke("update_settings", { settings: s });
+    } catch (e) { console.error(e); }
+  };
+
+  const saveSlideshowSettings = async (enabled, fileIds, interval, shuffle, opacity, fit) => {
+    try {
+      const s = await invoke("get_settings");
+      s.slideshow_enabled = enabled;
+      s.slideshow_file_ids = fileIds;
       s.slideshow_interval = interval;
+      s.slideshow_shuffle = shuffle;
+      s.slideshow_opacity = opacity;
+      s.slideshow_fit = fit;
       await invoke("update_settings", { settings: s });
     } catch (e) { console.error(e); }
   };
@@ -335,14 +419,15 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
               </div>
             </div>
 
+            {/* Static Background */}
             <div className="settings-section">
-              <div className="settings-section-title">CUSTOM BACKGROUND</div>
+              <div className="settings-section-title">STATIC BACKGROUND</div>
               <div className="settings-about">
                 <div className="settings-about-row">
-                  <span className="settings-about-label">TYPE</span>
-                  <span className="settings-about-value">{bgType || "NONE"}</span>
+                  <span className="settings-about-label">SOURCE</span>
+                  <span className="settings-about-value">{bgType ? (bgData.startsWith("vault:") ? "VAULT FILE" : "LOCAL FILE") : "NONE"}</span>
                 </div>
-                <div className="settings-about-row">
+                <div className="settings-about-row" style={{ gap: 6, flexWrap: "wrap" }}>
                   <button className="fl-btn fl-btn-primary" onClick={async () => {
                     const sel = await openDialog({ multiple: false, filters: [
                       { name: "Image", extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp"] },
@@ -353,55 +438,72 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                       const isVid = /\.(mp4|webm|mkv|avi|mov)$/i.test(p);
                       setBgType(isVid ? "video" : "image");
                       setBgData(p);
-                      handleSaveBg(isVid ? "video" : "image", p, bgOpacity, bgFit, bgInterval);
+                      saveBgSettings(isVid ? "video" : "image", p, bgOpacity, bgFit);
                     }
-                  }}>SELECT FILE</button>
+                  }}>FROM COMPUTER</button>
+                  <button className="fl-btn fl-btn-muted" onClick={() => setShowVaultPicker("bg")}>
+                    FROM VAULT
+                  </button>
                   {bgType && (
                     <button className="fl-btn fl-btn-danger" onClick={() => {
                       setBgType(""); setBgData("");
-                      handleSaveBg("", "", bgOpacity, bgFit, bgInterval);
+                      saveBgSettings("", "", bgOpacity, bgFit);
                     }}>REMOVE</button>
                   )}
                 </div>
                 {bgData && (
-                  <div style={{ fontSize: 12, color: "var(--text3)", wordBreak: "break-all", padding: "2px 0" }}>
-                    {bgData}
+                  <div style={{ fontSize: 11, color: "var(--text4)", wordBreak: "break-all", padding: "2px 0" }}>
+                    {bgData.startsWith("vault:") ? "Vault file: " + bgData.slice(6) : bgData}
                   </div>
                 )}
                 <div className="settings-about-row">
                   <span className="settings-about-label">OPACITY</span>
-                  <input
-                    type="range" min="0" max="1" step="0.05"
-                    value={bgOpacity}
-                    onChange={e => {
-                      const v = parseFloat(e.target.value);
-                      setBgOpacity(v);
-                      handleSaveBg(bgType, bgData, v, bgFit, bgInterval);
-                    }}
-                    style={{ width: 120 }}
-                  />
+                  <input type="range" min="0" max="1" step="0.05" value={bgOpacity}
+                    onChange={e => { const v = parseFloat(e.target.value); setBgOpacity(v); saveBgSettings(bgType, bgData, v, bgFit); }}
+                    style={{ width: 120 }} />
                   <span className="settings-about-value">{Math.round(bgOpacity * 100)}%</span>
                 </div>
                 <div className="settings-about-row">
                   <span className="settings-about-label">FIT</span>
-                  <select className="sort-select" value={bgFit} onChange={e => {
-                    setBgFit(e.target.value);
-                    handleSaveBg(bgType, bgData, bgOpacity, e.target.value, bgInterval);
-                  }} style={{ minWidth: 100 }}>
+                  <select className="sort-select" value={bgFit} onChange={e => { setBgFit(e.target.value); saveBgSettings(bgType, bgData, bgOpacity, e.target.value); }}
+                    style={{ minWidth: 100 }}>
                     <option value="cover">COVER</option>
                     <option value="contain">CONTAIN</option>
                     <option value="fill">FILL</option>
                     <option value="stretch">STRETCH</option>
                   </select>
                 </div>
+              </div>
+            </div>
+
+            {/* Slideshow Wallpaper */}
+            <div className="settings-section">
+              <div className="settings-section-title">SLIDESHOW WALLPAPER</div>
+              <div className="settings-about">
                 <div className="settings-about-row">
-                  <span className="settings-about-label">SLIDESHOW INTERVAL</span>
-                  <select className="sort-select" value={bgInterval} onChange={e => {
-                    const v = parseInt(e.target.value);
-                    setBgInterval(v);
-                    handleSaveBg(bgType, bgData, bgOpacity, bgFit, v);
-                  }} style={{ minWidth: 120 }}>
-                    <option value={0}>OFF</option>
+                  <span className="settings-about-label">STATUS</span>
+                  <span className="settings-about-value" style={{ color: ssEnabled ? "var(--green)" : "var(--text4)" }}>
+                    {ssEnabled ? `ON (${ssFileIds.length} files)` : "OFF"}
+                  </span>
+                </div>
+                <div className="settings-about-row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <button className="fl-btn fl-btn-primary" onClick={() => setShowVaultPicker("slideshow")}>
+                    SELECT FROM VAULT
+                  </button>
+                  <button className={`fl-btn ${ssEnabled ? "fl-btn-danger" : "fl-btn-primary"}`}
+                    onClick={() => { const v = !ssEnabled; setSsEnabled(v); saveSlideshowSettings(v, ssFileIds, ssInterval, ssShuffle, ssOpacity, ssFit); }}>
+                    {ssEnabled ? "DISABLE" : "ENABLE"}
+                  </button>
+                </div>
+                {ssFileIds.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--text4)", padding: "2px 0" }}>
+                    {ssFileIds.length} vault files selected
+                  </div>
+                )}
+                <div className="settings-about-row">
+                  <span className="settings-about-label">INTERVAL</span>
+                  <select className="sort-select" value={ssInterval} onChange={e => { const v = parseInt(e.target.value); setSsInterval(v); saveSlideshowSettings(ssEnabled, ssFileIds, v, ssShuffle, ssOpacity, ssFit); }}
+                    style={{ minWidth: 120 }}>
                     <option value={1}>1 SECOND</option>
                     <option value={3}>3 SECONDS</option>
                     <option value={5}>5 SECONDS</option>
@@ -412,8 +514,51 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                     <option value={600}>10 MINUTES</option>
                   </select>
                 </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">SHUFFLE</span>
+                  <button className={`fl-btn ${ssShuffle ? "fl-btn-primary" : "fl-btn-muted"}`}
+                    onClick={() => { const v = !ssShuffle; setSsShuffle(v); saveSlideshowSettings(ssEnabled, ssFileIds, ssInterval, v, ssOpacity, ssFit); }}>
+                    {ssShuffle ? "ON" : "OFF"}
+                  </button>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">OPACITY</span>
+                  <input type="range" min="0" max="1" step="0.05" value={ssOpacity}
+                    onChange={e => { const v = parseFloat(e.target.value); setSsOpacity(v); saveSlideshowSettings(ssEnabled, ssFileIds, ssInterval, ssShuffle, v, ssFit); }}
+                    style={{ width: 120 }} />
+                  <span className="settings-about-value">{Math.round(ssOpacity * 100)}%</span>
+                </div>
+                <div className="settings-about-row">
+                  <span className="settings-about-label">FIT</span>
+                  <select className="sort-select" value={ssFit} onChange={e => { setSsFit(e.target.value); saveSlideshowSettings(ssEnabled, ssFileIds, ssInterval, ssShuffle, ssOpacity, e.target.value); }}
+                    style={{ minWidth: 100 }}>
+                    <option value="cover">COVER</option>
+                    <option value="contain">CONTAIN</option>
+                    <option value="fill">FILL</option>
+                    <option value="stretch">STRETCH</option>
+                  </select>
+                </div>
               </div>
             </div>
+
+            {/* Vault File Picker Modal */}
+            {showVaultPicker && (
+              <VaultFilePicker
+                mode={showVaultPicker}
+                onSelect={async (ids) => {
+                  if (showVaultPicker === "bg" && ids.length > 0) {
+                    const id = ids[0];
+                    setBgType("image"); setBgData("vault:" + id);
+                    saveBgSettings("image", "vault:" + id, bgOpacity, bgFit);
+                  } else if (showVaultPicker === "slideshow") {
+                    setSsFileIds(ids);
+                    saveSlideshowSettings(ssEnabled, ids, ssInterval, ssShuffle, ssOpacity, ssFit);
+                  }
+                  setShowVaultPicker(null);
+                }}
+                onClose={() => setShowVaultPicker(null)}
+              />
+            )}
           </>
         )}
 

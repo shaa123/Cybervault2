@@ -53,19 +53,29 @@ pub struct VaultSettings {
     #[serde(default)]
     pub pin_hash: String,
     #[serde(default)]
-    pub auto_lock_secs: u64, // 0 = disabled
+    pub auto_lock_secs: u64,
+    // Static background
     #[serde(default)]
     pub bg_type: String, // "" | "image" | "video"
     #[serde(default)]
-    pub bg_data: String, // base64 data or path
+    pub bg_data: String, // file path or vault file id prefixed with "vault:"
     #[serde(default)]
     pub bg_opacity: f64,
     #[serde(default)]
-    pub bg_fit: String, // "cover" | "contain" | "fill" | "stretch"
+    pub bg_fit: String,
+    // Slideshow wallpaper (separate from static BG)
     #[serde(default)]
-    pub slideshow_interval: u64, // seconds, 0 = disabled
+    pub slideshow_enabled: bool,
+    #[serde(default)]
+    pub slideshow_file_ids: Vec<String>, // vault file IDs for slideshow
+    #[serde(default)]
+    pub slideshow_interval: u64, // seconds
     #[serde(default)]
     pub slideshow_shuffle: bool,
+    #[serde(default)]
+    pub slideshow_opacity: f64,
+    #[serde(default)]
+    pub slideshow_fit: String,
 }
 
 #[derive(Serialize, Deserialize)]

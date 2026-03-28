@@ -182,40 +182,93 @@ export default function App() {
 
   // Load background as data URL
   const [bgSrc, setBgSrc] = useState(null);
+  const [ssSrcs, setSsSrcs] = useState([]);
+  const [ssIdx, setSsIdx] = useState(0);
+  const ssTimerRef = useRef(null);
 
+  // Load static BG and slideshow settings
   useEffect(() => {
     if (!locked && !checkingPin && tab !== "settings") {
       invoke("get_settings").then(async (s) => {
+        setBgSettings(s);
+
+        // Static BG
         if (s.bg_type && s.bg_data) {
-          setBgSettings(s);
           try {
-            const dataUrl = await invoke("read_bg_file", { path: s.bg_data });
+            let dataUrl;
+            if (s.bg_data.startsWith("vault:")) {
+              dataUrl = await invoke("read_vault_file_as_data_url", { fileId: s.bg_data.slice(6) });
+            } else {
+              dataUrl = await invoke("read_bg_file", { path: s.bg_data });
+            }
             setBgSrc(dataUrl);
-          } catch (e) {
-            console.error("Failed to load bg:", e);
-            setBgSrc(null);
-          }
+          } catch (e) { setBgSrc(null); }
         } else {
-          setBgSettings(null);
           setBgSrc(null);
+        }
+
+        // Slideshow
+        if (s.slideshow_enabled && s.slideshow_file_ids?.length > 0) {
+          const ids = s.slideshow_shuffle
+            ? [...s.slideshow_file_ids].sort(() => Math.random() - 0.5)
+            : s.slideshow_file_ids;
+          // Load first 2 images for fast start
+          const urls = [];
+          for (let i = 0; i < Math.min(2, ids.length); i++) {
+            try {
+              const url = await invoke("read_vault_file_as_data_url", { fileId: ids[i] });
+              urls.push(url);
+            } catch { urls.push(null); }
+          }
+          setSsSrcs(urls);
+          setSsIdx(0);
+          // Load rest in background
+          (async () => {
+            for (let i = 2; i < ids.length; i++) {
+              try {
+                const url = await invoke("read_vault_file_as_data_url", { fileId: ids[i] });
+                setSsSrcs(prev => [...prev, url]);
+              } catch { setSsSrcs(prev => [...prev, null]); }
+            }
+          })();
+        } else {
+          setSsSrcs([]);
         }
       }).catch(() => {});
     }
   }, [tab, locked, checkingPin]);
+
+  // Slideshow timer
+  useEffect(() => {
+    if (bgSettings?.slideshow_enabled && ssSrcs.length > 1) {
+      const interval = (bgSettings.slideshow_interval || 5) * 1000;
+      ssTimerRef.current = setInterval(() => {
+        setSsIdx(prev => (prev + 1) % ssSrcs.length);
+      }, interval);
+    }
+    return () => { if (ssTimerRef.current) clearInterval(ssTimerRef.current); };
+  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs.length]);
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
 
   return (
     <div className="app">
-      {bgSrc && bgSettings.bg_type === "image" && (
+      {/* Static BG */}
+      {bgSrc && bgSettings?.bg_type === "image" && !bgSettings?.slideshow_enabled && (
         <div className="app-bg" style={{ opacity: bgSettings.bg_opacity || 0.3 }}>
           <img src={bgSrc} alt="" style={{ objectFit: bgSettings.bg_fit || "cover" }} />
         </div>
       )}
-      {bgSrc && bgSettings.bg_type === "video" && (
+      {bgSrc && bgSettings?.bg_type === "video" && !bgSettings?.slideshow_enabled && (
         <div className="app-bg" style={{ opacity: bgSettings.bg_opacity || 0.3 }}>
           <video src={bgSrc} autoPlay loop muted style={{ objectFit: bgSettings.bg_fit || "cover" }} />
+        </div>
+      )}
+      {/* Slideshow BG */}
+      {bgSettings?.slideshow_enabled && ssSrcs.length > 0 && ssSrcs[ssIdx] && (
+        <div className="app-bg" style={{ opacity: bgSettings.slideshow_opacity || 0.3 }}>
+          <img src={ssSrcs[ssIdx]} alt="" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
         </div>
       )}
       <TitleBar />

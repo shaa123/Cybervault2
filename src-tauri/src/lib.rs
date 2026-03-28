@@ -338,6 +338,22 @@ fn read_bg_file(path: String) -> Result<String, String> {
     Ok(format!("data:{};base64,{}", mime, b64))
 }
 
+/// Read a vault file by ID and return as data URL (for BG from vault)
+#[tauri::command]
+fn read_vault_file_as_data_url(state: State<AppState>, file_id: String) -> Result<String, String> {
+    let (hidden_path, original_name) = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        let p = vault.get_file_path(&file_id)?;
+        let n = vault.get_original_name(&file_id)?;
+        (p, n)
+    };
+    let data = std::fs::read(&hidden_path).map_err(|e| e.to_string())?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    let mime = guess_mime_type(&original_name);
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
 #[tauri::command]
 fn debug_info(state: State<AppState>) -> Result<String, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
@@ -586,6 +602,7 @@ pub fn run() {
             get_missing_video_thumb_ids,
             has_thumbnail,
             read_bg_file,
+            read_vault_file_as_data_url,
             debug_info,
             set_pin,
             verify_pin,
