@@ -56,5 +56,117 @@ html, body, #root {
 
 ::selection { background: var(--cyan); color: var(--bg); }
 
-button { font-family: var(--font); font-size: 1rem; cursor: pointer; border: none; outline: none; background: none; color: inherit; }
+button {
+  font-family: var(--font);
+  font-size: 1rem;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+  color: inherit;
+  transition: transform 0.12s ease;
+}
+button:active { animation: btn-pop 0.25s ease; }
 input, textarea { font-family: var(--mono); font-size: 1rem; outline: none; border: none; background: none; color: inherit; }
+
+/* ═══════════════════════════════════════════════
+   CYBERPUNK ANIMATIONS
+   ═══════════════════════════════════════════════ */
+
+/* Button pop on click */
+@keyframes btn-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.92); }
+  70%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes btn-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.5); }
+  70%  { box-shadow: 0 0 0 12px rgba(0, 229, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+}
+
+/* Keypad press */
+@keyframes key-press {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(0.88); }
+  60%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes key-glow-flash {
+  0%   { box-shadow: inset 0 0 0 1px var(--border); }
+  30%  { box-shadow: inset 0 0 0 1px var(--cyan), 0 0 15px rgba(0, 229, 255, 0.4); }
+  100% { box-shadow: inset 0 0 0 1px var(--border); }
+}
+
+/* PIN dot fill */
+@keyframes dot-fill {
+  0%   { transform: scale(0); }
+  50%  { transform: scale(1.5); }
+  100% { transform: scale(1); }
+}
+
+/* PIN error shake */
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-8px); }
+  20% { transform: translateX(8px); }
+  30% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  50% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+}
+
+/* Lock screen unlock */
+@keyframes lock-unlock {
+  0%   { opacity: 1; transform: scale(1); filter: blur(0); }
+  40%  { opacity: 1; transform: scale(1.02); filter: brightness(1.5); }
+  100% { opacity: 0; transform: scale(1.1); filter: blur(12px) brightness(2); }
+}
+
+/* App reveal after unlock */
+@keyframes app-reveal {
+  0%   { opacity: 0; transform: scale(0.97); filter: blur(4px); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+/* Page slide transitions */
+@keyframes slide-in-up {
+  from { transform: translateY(15px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* Ripple expand */
+@keyframes ripple-expand {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* Rainbow border rotation */
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes rainbow-rotate {
+  to { --border-angle: 360deg; }
+}
+
+/* Neon text pulse */
+@keyframes neon-text-pulse {
+  0%, 100% { text-shadow: 0 0 4px var(--cyan), 0 0 11px var(--cyan), 0 0 19px rgba(0, 229, 255, 0.3); }
+  50%      { text-shadow: 0 0 2px var(--cyan), 0 0 5px rgba(0, 229, 255, 0.4); }
+}
+
+/* Stagger children entrance */
+@keyframes stagger-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

@@ -235,7 +235,7 @@ export default function App() {
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
 
   return (
-    <div className="app">
+    <div className="app" style={{ animation: "app-reveal 0.4s ease" }}>
       {/* Static BG */}
       {bgSrc && bgSettings?.bg_type === "image" && !bgSettings?.slideshow_enabled && (
         <div className="app-bg" style={{ opacity: bgSettings.bg_opacity || 0.3 }}>
@@ -255,7 +255,7 @@ export default function App() {
       )}
       <TitleBar />
       <NavTabs tabs={TABS} active={tab} onSelect={setTab} stats={stats} onLock={() => setLocked(true)} />
-      <div className="content">
+      <div className="content" key={tab}>
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
         ) : tab === "settings" ? (
