@@ -126,22 +126,30 @@
   position: relative;
 }
 
-.nav-tab:hover { color: var(--text2); background: var(--surface); }
+.nav-tab:hover { color: var(--tab-color, var(--text2)); background: var(--surface); }
 
-.nav-tab.active { color: var(--text); background: var(--surface2); }
+.nav-tab.active { background: var(--surface2); }
 
 .nav-tab.active::after {
   content: '';
   position: absolute;
-  bottom: -11px;
+  bottom: -7px;
   left: 50%;
   transform: translateX(-50%);
   width: 20px;
   height: 2px;
-  background: var(--cyan);
+  background: var(--tab-color, var(--cyan));
   border-radius: 1px;
-  box-shadow: 0 0 8px var(--cyan);
+  box-shadow: 0 0 8px var(--tab-color, var(--cyan));
 }
+
+.nav-lock {
+  font-size: 14px;
+  padding: 4px 8px;
+  color: var(--text3);
+}
+
+.nav-lock:hover { color: var(--red); background: var(--surface); }
 
 .nav-tab .badge {
   font-size: 14px;

@@ -313,6 +313,16 @@ fn get_missing_video_thumb_ids(state: State<AppState>) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content).map_err(|e| format!("Write failed: {}", e))
+}
+
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
+}
+
+#[tauri::command]
 fn read_bg_file(path: String) -> Result<String, String> {
     let data = std::fs::read(&path).map_err(|e| format!("Failed to read bg: {}", e))?;
     use base64::Engine;
@@ -601,6 +611,8 @@ pub fn run() {
             save_thumb_data,
             get_missing_video_thumb_ids,
             has_thumbnail,
+            write_file,
+            read_file,
             read_bg_file,
             read_vault_file_as_data_url,
             debug_info,

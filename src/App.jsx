@@ -9,11 +9,10 @@ import NoteEditor from "./components/NoteEditor";
 import MediaViewer from "./components/MediaViewer";
 import Settings from "./components/Settings";
 import LockScreen from "./components/LockScreen";
-import AuditLog from "./components/AuditLog";
 import "./styles/app.css";
 
 const TABS = [
-  { id: "home", label: "HOME", icon: "◇" },
+  { id: "home", label: "HOME", icon: "◇", color: "#00e5ff" },
   { id: "image", label: "IMAGES", icon: "◈", color: "#00e5ff" },
   { id: "video", label: "VIDEOS", icon: "▶", color: "#e040fb" },
   { id: "document", label: "DOCS", icon: "◧", color: "#ffd740" },
@@ -31,7 +30,6 @@ export default function App() {
   const [editingNote, setEditingNote] = useState(null);
   const [view, setView] = useState("list");
   const [viewingMedia, setViewingMedia] = useState(null);
-  const [auditOpen, setAuditOpen] = useState(false);
   const [bgSettings, setBgSettings] = useState(null);
 
   // Load background settings (only when unlocked)
@@ -256,12 +254,12 @@ export default function App() {
         </div>
       )}
       <TitleBar />
-      <NavTabs tabs={TABS} active={tab} onSelect={setTab} stats={stats} />
+      <NavTabs tabs={TABS} active={tab} onSelect={setTab} stats={stats} onLock={() => setLocked(true)} />
       <div className="content">
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
         ) : tab === "settings" ? (
-          <Settings stats={stats} onPurge={handleChanged} onOpenAudit={() => setAuditOpen(true)} />
+          <Settings stats={stats} onPurge={handleChanged} />
         ) : view === "editor" ? (
           <NoteEditor note={editingNote} onSave={handleChanged} onBack={closeEditor} />
         ) : (
@@ -287,8 +285,6 @@ export default function App() {
         />
       )}
 
-      {/* Audit Log */}
-      <AuditLog open={auditOpen} onClose={() => setAuditOpen(false)} />
     </div>
   );
 }

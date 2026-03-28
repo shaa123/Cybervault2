@@ -186,7 +186,7 @@ async function captureVideoFrame(fileId) {
   }
 }
 
-export default function Settings({ stats, onPurge, onOpenAudit }) {
+export default function Settings({ stats, onPurge }) {
   const [debugText, setDebugText] = useState("");
   const [caching, setCaching] = useState(false);
   const [cacheProgress, setCacheProgress] = useState(null); // { done, total } or null
@@ -203,8 +203,6 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
   const [autoLock, setAutoLock] = useState(0);
 
   // Backup
-  const [backupData, setBackupData] = useState("");
-  const [restoreInput, setRestoreInput] = useState("");
   const [restoreMsg, setRestoreMsg] = useState("");
 
   // Static Background
@@ -300,32 +298,37 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
     setPurging(false);
   };
 
-  const handleBackup = async () => {
+  const handleBackupToFile = async () => {
     try {
       const data = await invoke("create_backup");
-      setBackupData(data);
-    } catch (e) { setBackupData("Error: " + e); }
-  };
-
-  const handleRestore = async () => {
-    if (!restoreInput.trim()) return;
-    try {
-      const msg = await invoke("restore_backup", { backupData: restoreInput.trim() });
-      setRestoreMsg(msg);
-      setRestoreInput("");
-      onPurge();
+      const dest = await openDialog({
+        save: true,
+        defaultPath: "cybervault_backup.cvb",
+        filters: [{ name: "CyberVault Backup", extensions: ["cvb"] }],
+      });
+      if (dest) {
+        const path = dest.path || dest;
+        // Write via Rust
+        await invoke("write_file", { path, content: data });
+        setRestoreMsg("Backup saved to " + path);
+      }
     } catch (e) { setRestoreMsg("Error: " + e); }
   };
 
-  const handleCopyBackup = () => {
-    navigator.clipboard.writeText(backupData);
-    setBackupData("Copied to clipboard!");
-    setTimeout(() => setBackupData(""), 2000);
-  };
-
-  const refreshDebug = async () => {
-    try { setDebugText(await invoke("debug_info")); }
-    catch (e) { setDebugText("Error: " + e); }
+  const handleRestoreFromFile = async () => {
+    try {
+      const sel = await openDialog({
+        multiple: false,
+        filters: [{ name: "CyberVault Backup", extensions: ["cvb"] }],
+      });
+      if (sel) {
+        const path = sel.path || sel;
+        const data = await invoke("read_file", { path });
+        const msg = await invoke("restore_backup", { backupData: data });
+        setRestoreMsg(msg);
+        onPurge();
+      }
+    } catch (e) { setRestoreMsg("Error: " + e); }
   };
 
   const toggleCaching = async () => {
@@ -432,28 +435,6 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         {/* ── APPEARANCE ── */}
         {openTab === "appearance" && (
           <>
-            <div className="settings-section">
-              <div className="settings-section-title">THEME</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">COLOR SCHEME</span>
-                  <span className="settings-about-value">CYBERPUNK DARK</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">FONT (UI)</span>
-                  <span className="settings-about-value">Corptic</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">FONT (FILES)</span>
-                  <span className="settings-about-value" style={{ fontFamily: "var(--font-file)" }}>Noto Sans</span>
-                </div>
-                <div className="settings-about-row">
-                  <span className="settings-about-label">GRID</span>
-                  <span className="settings-about-value">5 × 5</span>
-                </div>
-              </div>
-            </div>
-
             {/* Static Background */}
             <div className="settings-section">
               <div className="settings-section-title">STATIC BACKGROUND</div>
@@ -476,7 +457,8 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                       saveBgSettings(isVid ? "video" : "image", p, bgOpacity, bgFit);
                     }
                   }}>FROM COMPUTER</button>
-                  <button className="fl-btn fl-btn-muted" onClick={() => setShowVaultPicker("bg")}>
+                  <button className="fl-btn fl-btn-muted" onClick={() => setShowVaultPicker("bg")}
+                    style={{ background: "rgba(255, 215, 64, 0.12)", color: "#ffd740", borderColor: "rgba(255, 215, 64, 0.3)" }}>
                     FROM VAULT
                   </button>
                   {bgType && (
@@ -600,41 +582,29 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
         {/* ── TOOLS ── */}
         {openTab === "tools" && (
           <>
-            {/* PIN */}
+            {/* PIN + Auto-lock in one section */}
             <div className="settings-section">
-              <div className="settings-section-title">PIN AUTHENTICATION</div>
+              <div className="settings-section-title">SECURITY</div>
               <div className="settings-about">
                 <div className="settings-about-row">
-                  <span className="settings-about-label">STATUS</span>
-                  <span className="settings-about-value" style={{ color: hasPin ? "var(--green)" : "var(--text4)" }}>
-                    {hasPin ? "ENABLED" : "DISABLED"}
-                  </span>
-                </div>
-                <div className="settings-about-row">
-                  <input
-                    className="search-input"
-                    type="password"
-                    placeholder={hasPin ? "Enter new PIN..." : "Set a PIN (4+ digits)..."}
-                    value={pinInput}
-                    onChange={e => setPinInput(e.target.value.replace(/\D/g, ""))}
-                    onKeyDown={e => { if (e.key === "Enter") handleSetPin(); }}
-                    style={{ maxWidth: 220 }}
-                  />
-                  <button className="fl-btn fl-btn-primary" onClick={handleSetPin}>SET PIN</button>
-                  {hasPin && (
-                    <button className="fl-btn fl-btn-danger" onClick={handleRemovePin}>REMOVE</button>
-                  )}
+                  <span className="settings-about-label">PIN</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input
+                      className="search-input"
+                      type="password"
+                      placeholder={hasPin ? "New PIN..." : "Set PIN (4+ digits)"}
+                      value={pinInput}
+                      onChange={e => setPinInput(e.target.value.replace(/\D/g, ""))}
+                      onKeyDown={e => { if (e.key === "Enter") handleSetPin(); }}
+                      style={{ maxWidth: 160 }}
+                    />
+                    <button className="fl-btn fl-btn-primary" onClick={handleSetPin}>SET</button>
+                    {hasPin && <button className="fl-btn fl-btn-danger" onClick={handleRemovePin}>REMOVE</button>}
+                  </div>
                 </div>
                 {pinMsg && <div style={{ fontSize: 13, color: "var(--text2)", padding: "4px 0" }}>{pinMsg}</div>}
-              </div>
-            </div>
-
-            {/* Auto-lock */}
-            <div className="settings-section">
-              <div className="settings-section-title">AUTO-LOCK TIMEOUT</div>
-              <div className="settings-about">
                 <div className="settings-about-row">
-                  <span className="settings-about-label">LOCK AFTER</span>
+                  <span className="settings-about-label">AUTO-LOCK</span>
                   <select className="sort-select" value={autoLock} onChange={e => handleAutoLockChange(parseInt(e.target.value))}>
                     {AUTO_LOCK_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -660,13 +630,6 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                 </div>
                 <div className="settings-action-row">
                   <div className="settings-action-info">
-                    <div className="settings-action-name">AUDIT LOG</div>
-                    <div className="settings-action-desc">View all vault actions with timestamps</div>
-                  </div>
-                  <button className="fl-btn fl-btn-primary" onClick={onOpenAudit}>VIEW</button>
-                </div>
-                <div className="settings-action-row">
-                  <div className="settings-action-info">
                     <div className="settings-action-name">CACHE ALL THUMBNAILS</div>
                     <div className="settings-action-desc">
                       {cacheProgress
@@ -675,61 +638,28 @@ export default function Settings({ stats, onPurge, onOpenAudit }) {
                     </div>
                     {cacheProgress && (
                       <div className="upload-progress-bar" style={{ marginTop: 6 }}>
-                        <div
-                          className="upload-progress-fill"
-                          style={{ width: `${cacheProgress.total > 0 ? Math.round((cacheProgress.done / cacheProgress.total) * 100) : 0}%` }}
-                        />
+                        <div className="upload-progress-fill"
+                          style={{ width: `${cacheProgress.total > 0 ? Math.round((cacheProgress.done / cacheProgress.total) * 100) : 0}%` }} />
                       </div>
                     )}
                   </div>
-                  <button
-                    className={`fl-btn ${caching ? "fl-btn-danger" : "fl-btn-primary"}`}
-                    onClick={toggleCaching}
-                  >
+                  <button className={`fl-btn ${caching ? "fl-btn-danger" : "fl-btn-primary"}`} onClick={toggleCaching}>
                     {caching ? "STOP" : "START"}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Backup / Restore */}
+            {/* Backup / Restore — file-based */}
             <div className="settings-section">
               <div className="settings-section-title">BACKUP / RESTORE</div>
               <div className="settings-about">
-                <div className="settings-about-row">
-                  <button className="fl-btn fl-btn-primary" onClick={handleBackup}>CREATE BACKUP</button>
-                  {backupData && !backupData.startsWith("Error") && (
-                    <button className="fl-btn fl-btn-muted" onClick={handleCopyBackup}>COPY</button>
-                  )}
+                <div className="settings-about-row" style={{ gap: 6 }}>
+                  <button className="fl-btn fl-btn-primary" onClick={handleBackupToFile}>SAVE BACKUP</button>
+                  <button className="fl-btn fl-btn-muted" onClick={handleRestoreFromFile}>RESTORE FROM FILE</button>
                 </div>
-                {backupData && (
-                  <div style={{ fontSize: 12, color: "var(--cyan)", wordBreak: "break-all", maxHeight: 60, overflow: "auto", padding: "4px 0" }}>
-                    {backupData.slice(0, 200)}{backupData.length > 200 ? "..." : ""}
-                  </div>
-                )}
-                <div className="settings-about-row" style={{ marginTop: 8 }}>
-                  <input
-                    className="search-input"
-                    placeholder="Paste backup data to restore..."
-                    value={restoreInput}
-                    onChange={e => setRestoreInput(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <button className="fl-btn fl-btn-danger" onClick={handleRestore}>RESTORE</button>
-                </div>
-                {restoreMsg && (
-                  <div style={{ fontSize: 13, color: "var(--text2)", padding: "4px 0" }}>{restoreMsg}</div>
-                )}
+                {restoreMsg && <div style={{ fontSize: 13, color: "var(--text2)", padding: "4px 0" }}>{restoreMsg}</div>}
               </div>
-            </div>
-
-            {/* Diagnostics */}
-            <div className="settings-section">
-              <div className="settings-section-title">
-                DIAGNOSTICS
-                <button className="settings-refresh-btn" onClick={refreshDebug}>REFRESH</button>
-              </div>
-              <pre className="settings-debug">{debugText}</pre>
             </div>
           </>
         )}
