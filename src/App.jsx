@@ -133,11 +133,15 @@ export default function App() {
   };
 
   const displayedListRef = useRef([]);
+  const [lastViewedId, setLastViewedId] = useState(null);
   const openMedia = (file, displayedFiles) => {
     if (displayedFiles) displayedListRef.current = displayedFiles;
     setViewingMedia(file);
   };
-  const closeMedia = () => setViewingMedia(null);
+  const closeMedia = () => {
+    if (viewingMedia) setLastViewedId(viewingMedia.id);
+    setViewingMedia(null);
+  };
 
   const navigateMedia = useCallback((dir) => {
     if (!viewingMedia) return;
@@ -189,6 +193,7 @@ export default function App() {
             onChanged={handleChanged}
             onEditNote={openEditor}
             onViewMedia={openMedia}
+            lastViewedId={!viewingMedia ? lastViewedId : null}
           />
         )}
       </div>

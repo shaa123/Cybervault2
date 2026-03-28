@@ -108,7 +108,7 @@ function CategoryPopup({ category, tags, onTagCreated, onTagDeleted, onAssign, o
   );
 }
 
-export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia }) {
+export default function FileList({ category, files, color, onChanged, onEditNote, onViewMedia, lastViewedId }) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null); // { done, total } or null
   const [selected, setSelected] = useState(new Set());
@@ -419,6 +419,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           onDelete={handleDelete}
           getThumbnail={getThumbnail}
           generateForVisible={generateForVisible}
+          scrollToFileId={lastViewedId}
         />
       ) : (
         <div className="fl-rows">

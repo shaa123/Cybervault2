@@ -13,7 +13,7 @@ function formatSize(bytes) {
 
 export default function VirtualGrid({
   files, selected, onToggleSelect, onViewMedia, onUnhide, onDelete,
-  getThumbnail, generateForVisible,
+  getThumbnail, generateForVisible, scrollToFileId,
 }) {
   const parentRef = useRef(null);
   const rowCount = Math.ceil(files.length / COLS);
@@ -24,6 +24,17 @@ export default function VirtualGrid({
     estimateSize: () => 200,
     overscan: 3,
   });
+
+  // Scroll to file when returning from viewer
+  useEffect(() => {
+    if (scrollToFileId) {
+      const idx = files.findIndex(f => f.id === scrollToFileId);
+      if (idx >= 0) {
+        const rowIdx = Math.floor(idx / COLS);
+        virtualizer.scrollToIndex(rowIdx, { align: "center" });
+      }
+    }
+  }, [scrollToFileId, files, virtualizer]);
 
   // Generate thumbnails for visible rows
   const visibleItems = virtualizer.getVirtualItems();
