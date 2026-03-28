@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import NavTabs from "./components/NavTabs";
 import Dashboard from "./components/Dashboard";
@@ -31,6 +32,14 @@ export default function App() {
   const [view, setView] = useState("list");
   const [viewingMedia, setViewingMedia] = useState(null);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [bgSettings, setBgSettings] = useState(null);
+
+  // Load background settings
+  useEffect(() => {
+    invoke("get_settings").then(s => {
+      if (s.bg_type && s.bg_data) setBgSettings(s);
+    }).catch(() => {})
+  }, []);
 
   // Check if PIN is set on startup
   useEffect(() => {
@@ -172,8 +181,30 @@ export default function App() {
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
 
+  // Reload BG settings when returning from settings tab
+  useEffect(() => {
+    if (tab !== "settings") {
+      invoke("get_settings").then(s => {
+        if (s.bg_type && s.bg_data) setBgSettings(s);
+        else setBgSettings(null);
+      }).catch(() => {});
+    }
+  }, [tab]);
+
+  const bgSrc = bgSettings?.bg_data ? convertFileSrc(bgSettings.bg_data) : null;
+
   return (
     <div className="app">
+      {bgSrc && bgSettings.bg_type === "image" && (
+        <div className="app-bg" style={{ opacity: bgSettings.bg_opacity || 0.3 }}>
+          <img src={bgSrc} alt="" style={{ objectFit: bgSettings.bg_fit || "cover" }} />
+        </div>
+      )}
+      {bgSrc && bgSettings.bg_type === "video" && (
+        <div className="app-bg" style={{ opacity: bgSettings.bg_opacity || 0.3 }}>
+          <video src={bgSrc} autoPlay loop muted style={{ objectFit: bgSettings.bg_fit || "cover" }} />
+        </div>
+      )}
       <TitleBar />
       <NavTabs tabs={TABS} active={tab} onSelect={setTab} stats={stats} />
       <div className="content">
