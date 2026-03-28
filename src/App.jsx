@@ -181,20 +181,20 @@ export default function App() {
     } catch (e) { console.error(e); }
   }, [viewingMedia, tab, loadFiles, refreshStats]);
 
-  if (checkingPin) return <div className="app" />;
-  if (locked) return <LockScreen onUnlock={handleUnlock} />;
-
   // Reload BG settings when returning from settings tab
   useEffect(() => {
-    if (tab !== "settings") {
+    if (!locked && !checkingPin && tab !== "settings") {
       invoke("get_settings").then(s => {
         if (s.bg_type && s.bg_data) setBgSettings(s);
         else setBgSettings(null);
       }).catch(() => {});
     }
-  }, [tab]);
+  }, [tab, locked, checkingPin]);
 
   const bgSrc = bgSettings?.bg_data ? convertFileSrc(bgSettings.bg_data) : null;
+
+  if (checkingPin) return <div className="app" />;
+  if (locked) return <LockScreen onUnlock={handleUnlock} />;
 
   return (
     <div className="app">
