@@ -313,6 +313,61 @@ fn get_missing_video_thumb_ids(state: State<AppState>) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
+fn get_storage_info(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let root = vault.vault_root_path().to_path_buf();
+    drop(vault);
+
+    // Get disk space for the vault drive
+    let mut total: u64 = 0;
+    let mut free: u64 = 0;
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        // Get drive letter from vault path
+        let drive = root.to_string_lossy().chars().next().unwrap_or('C');
+        if let Ok(output) = Command::new("wmic")
+            .args(["logicaldisk", "where", &format!("DeviceID='{drive}:'"), "get", "Size,FreeSpace", "/format:csv"])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 3 {
+                    free = parts[1].trim().parse().unwrap_or(0);
+                    total = parts[2].trim().parse().unwrap_or(0);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("df")
+            .args(["-B1", &root.to_string_lossy()])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = text.lines().nth(1) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 4 {
+                    total = parts[1].parse().unwrap_or(0);
+                    free = parts[3].parse().unwrap_or(0);
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "total": total,
+        "free": free,
+        "used": total.saturating_sub(free),
+    }))
+}
+
+#[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| format!("Write failed: {}", e))
 }
@@ -611,6 +666,7 @@ pub fn run() {
             save_thumb_data,
             get_missing_video_thumb_ids,
             has_thumbnail,
+            get_storage_info,
             write_file,
             read_file,
             read_bg_file,

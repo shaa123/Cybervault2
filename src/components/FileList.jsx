@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import SearchBar from "./SearchBar";
 import VirtualGrid from "./VirtualGrid";
 import { useThumbnails } from "../hooks/useThumbnails";
 
@@ -116,7 +115,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
   const [activeTag, setActiveTag] = useState("");
   const [showCatPopup, setShowCatPopup] = useState(false);
   const [catMode, setCatMode] = useState("browse");
-  const [search, setSearch] = useState("");
   const [sort, setSort] = useState(
     (category === "image" || category === "video") ? "random" : "date-desc"
   );
@@ -143,12 +141,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       ? files.filter(f => f.tag === activeTag)
       : files;
 
-    // Search filter
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(f => f.original_name.toLowerCase().includes(q));
-    }
-
     // Sort (skip for "random" to preserve shuffle order from loadFiles)
     if (sort !== "random") {
       result = [...result].sort((a, b) => {
@@ -166,7 +158,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     }
 
     return result;
-  }, [files, activeTag, search, sort]);
+  }, [files, activeTag, sort]);
 
   // Ctrl+A and DEL key handlers
   useEffect(() => {
@@ -358,8 +350,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         </div>
       )}
 
-      {/* Search & Sort */}
-      <SearchBar search={search} onSearch={setSearch} sort={sort} onSort={setSort} />
 
       {/* Tag filter dropdown */}
       {tags.length > 0 && (

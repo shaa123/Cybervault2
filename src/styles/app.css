@@ -303,6 +303,56 @@
   letter-spacing: 1px;
 }
 
+/* ─── STORAGE BAR ───────────────────────────── */
+
+.dash-storage {
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--cyan);
+  border-radius: 10px;
+}
+
+.dash-storage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.dash-storage-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--cyan);
+}
+
+.dash-storage-text {
+  font-size: 13px;
+  font-family: var(--font-file);
+  color: var(--text2);
+}
+
+.dash-storage-bar {
+  height: 8px;
+  background: var(--surface3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dash-storage-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.dash-storage-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  font-family: var(--font-file);
+  color: var(--text3);
+}
+
 /* ─── FILE LIST ─────────────────────────────── */
 
 .filelist {
