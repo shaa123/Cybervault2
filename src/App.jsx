@@ -12,7 +12,7 @@ import LockScreen from "./components/LockScreen";
 import "./styles/app.css";
 
 const TABS = [
-  { id: "home", label: "HOME", icon: "◇", color: "#00e5ff" },
+  { id: "home", label: "HOME", icon: "◇", color: "#8b1a2b" },
   { id: "image", label: "IMAGES", icon: "◈", color: "#00e5ff" },
   { id: "video", label: "VIDEOS", icon: "▶", color: "#e040fb" },
   { id: "document", label: "DOCS", icon: "◧", color: "#ffd740" },

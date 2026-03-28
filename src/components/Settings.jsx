@@ -219,6 +219,8 @@ export default function Settings({ stats, onPurge }) {
   const [ssFit, setSsFit] = useState("cover");
   // Vault picker
   const [showVaultPicker, setShowVaultPicker] = useState(null);
+  // Dropdown toggles
+  const [secOpen, setSecOpen] = useState(null);
 
   useEffect(() => {
     invoke("debug_info").then(setDebugText).catch(e => setDebugText("Error: " + e));
@@ -582,13 +584,18 @@ export default function Settings({ stats, onPurge }) {
         {/* ── TOOLS ── */}
         {openTab === "tools" && (
           <>
-            {/* PIN + Auto-lock in one section */}
+            {/* PIN Authentication — dropdown */}
             <div className="settings-section">
-              <div className="settings-section-title">SECURITY</div>
-              <div className="settings-about">
-                <div className="settings-about-row">
-                  <span className="settings-about-label">PIN</span>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <button className="settings-dropdown-toggle" onClick={() => setSecOpen(p => p === "pin" ? null : "pin")}>
+                <span>PIN AUTHENTICATION</span>
+                <span style={{ color: hasPin ? "var(--green)" : "var(--text4)", marginLeft: "auto", marginRight: 10 }}>
+                  {hasPin ? "ENABLED" : "DISABLED"}
+                </span>
+                <span className="st-tab-arrow">{secOpen === "pin" ? "▲" : "▼"}</span>
+              </button>
+              {secOpen === "pin" && (
+                <div className="settings-about" style={{ marginTop: 6 }}>
+                  <div className="settings-about-row">
                     <input
                       className="search-input"
                       type="password"
@@ -596,22 +603,36 @@ export default function Settings({ stats, onPurge }) {
                       value={pinInput}
                       onChange={e => setPinInput(e.target.value.replace(/\D/g, ""))}
                       onKeyDown={e => { if (e.key === "Enter") handleSetPin(); }}
-                      style={{ maxWidth: 160 }}
+                      style={{ maxWidth: 200 }}
                     />
                     <button className="fl-btn fl-btn-primary" onClick={handleSetPin}>SET</button>
                     {hasPin && <button className="fl-btn fl-btn-danger" onClick={handleRemovePin}>REMOVE</button>}
                   </div>
+                  {pinMsg && <div style={{ fontSize: 13, color: "var(--text2)", padding: "4px 0" }}>{pinMsg}</div>}
                 </div>
-                {pinMsg && <div style={{ fontSize: 13, color: "var(--text2)", padding: "4px 0" }}>{pinMsg}</div>}
-                <div className="settings-about-row">
-                  <span className="settings-about-label">AUTO-LOCK</span>
-                  <select className="sort-select" value={autoLock} onChange={e => handleAutoLockChange(parseInt(e.target.value))}>
-                    {AUTO_LOCK_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+              )}
+            </div>
+
+            {/* Auto-lock — dropdown */}
+            <div className="settings-section">
+              <button className="settings-dropdown-toggle" onClick={() => setSecOpen(p => p === "lock" ? null : "lock")}>
+                <span>AUTO-LOCK TIMEOUT</span>
+                <span style={{ color: autoLock > 0 ? "var(--cyan)" : "var(--text4)", marginLeft: "auto", marginRight: 10 }}>
+                  {AUTO_LOCK_OPTIONS.find(o => o.value === autoLock)?.label || "OFF"}
+                </span>
+                <span className="st-tab-arrow">{secOpen === "lock" ? "▲" : "▼"}</span>
+              </button>
+              {secOpen === "lock" && (
+                <div className="settings-about" style={{ marginTop: 6 }}>
+                  <div className="settings-about-row">
+                    <select className="sort-select" value={autoLock} onChange={e => handleAutoLockChange(parseInt(e.target.value))}>
+                      {AUTO_LOCK_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Actions */}
