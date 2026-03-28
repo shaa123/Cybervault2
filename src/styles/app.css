@@ -28,7 +28,11 @@
   object-fit: cover;
 }
 
-.app > *:not(.app-bg) {
+/* Ensure content stacks above background */
+.titlebar,
+.nav,
+.content,
+.lock-screen {
   position: relative;
   z-index: 1;
 }

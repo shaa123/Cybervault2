@@ -34,12 +34,15 @@ export default function App() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [bgSettings, setBgSettings] = useState(null);
 
-  // Load background settings
+  // Load background settings (only when unlocked)
   useEffect(() => {
-    invoke("get_settings").then(s => {
-      if (s.bg_type && s.bg_data) setBgSettings(s);
-    }).catch(() => {})
-  }, []);
+    if (!locked && !checkingPin) {
+      invoke("get_settings").then(s => {
+        if (s.bg_type && s.bg_data) setBgSettings(s);
+        else setBgSettings(null);
+      }).catch(() => {});
+    }
+  }, [locked, checkingPin]);
 
   // Check if PIN is set on startup
   useEffect(() => {
