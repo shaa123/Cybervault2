@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { vaultFileUrl } from "./hooks/useThumbnails";
 import TitleBar from "./components/TitleBar";
 import NavTabs from "./components/NavTabs";
 import Dashboard from "./components/Dashboard";
@@ -182,12 +183,9 @@ export default function App() {
 
   // Load background as data URL
   const [bgSrc, setBgSrc] = useState(null);
-  const [ssSrcs, setSsSrcs] = useState([]);
-  const ssSrcsRef = useRef([]);
+  const [ssUrls, setSsUrls] = useState([]);
+  const [ssIdx, setSsIdx] = useState(0);
   const ssTimerRef = useRef(null);
-
-  // Keep ref in sync with state
-  useEffect(() => { ssSrcsRef.current = ssSrcs; }, [ssSrcs]);
 
   // Load static BG and slideshow settings
   useEffect(() => {
@@ -210,81 +208,30 @@ export default function App() {
           setBgSrc(null);
         }
 
-        // Slideshow — preload as Image objects for instant swap
+        // Slideshow — just build protocol URLs, no file reading
         if (s.slideshow_enabled && s.slideshow_file_ids?.length > 0) {
-          const ids = s.slideshow_shuffle
-            ? [...s.slideshow_file_ids].sort(() => Math.random() - 0.5)
-            : s.slideshow_file_ids;
-
-          // Load all as data URLs into Image objects (decoded in memory)
-          const preloaded = [];
-          for (const id of ids) {
-            try {
-              const url = await invoke("read_vault_file_as_data_url", { fileId: id });
-              // Create Image to force browser decode
-              const img = new Image();
-              img.src = url;
-              preloaded.push(url);
-            } catch { /* skip failed */ }
-          }
-          setSsSrcs(preloaded);
+          let ids = [...s.slideshow_file_ids];
+          if (s.slideshow_shuffle) ids.sort(() => Math.random() - 0.5);
+          setSsUrls(ids.map(id => vaultFileUrl(id)));
+          setSsIdx(0);
         } else {
-          setSsSrcs([]);
+          setSsUrls([]);
         }
       }).catch(() => {});
     }
   }, [tab, locked, checkingPin]);
 
-  // Slideshow — double-buffer: two img elements, preload next before swap
-  const ssImgARef = useRef(null);
-  const ssImgBRef = useRef(null);
-  const ssActiveRef = useRef("a"); // which img is currently visible
+  // Slideshow timer — simple index rotation
   useEffect(() => {
-    if (bgSettings?.slideshow_enabled && ssSrcs.length > 0) {
-      const interval = (bgSettings.slideshow_interval || 5) * 1000;
-      let idx = 0;
-
-      // Show first image on A
-      if (ssImgARef.current && ssSrcs[0]) {
-        ssImgARef.current.src = ssSrcs[0];
-        ssImgARef.current.style.opacity = "1";
-      }
-      if (ssImgBRef.current) ssImgBRef.current.style.opacity = "0";
-
-      // Preload next image on hidden buffer
-      const preloadNext = () => {
-        const srcs = ssSrcsRef.current;
-        if (srcs.length <= 1) return;
-        const nextIdx = (idx + 1) % srcs.length;
-        const hidden = ssActiveRef.current === "a" ? ssImgBRef.current : ssImgARef.current;
-        if (hidden && srcs[nextIdx]) hidden.src = srcs[nextIdx];
-      };
-
-      // Preload first next
-      setTimeout(preloadNext, 100);
-
+    if (ssTimerRef.current) clearInterval(ssTimerRef.current);
+    if (bgSettings?.slideshow_enabled && ssUrls.length > 1) {
+      const ms = (bgSettings.slideshow_interval || 5) * 1000;
       ssTimerRef.current = setInterval(() => {
-        const srcs = ssSrcsRef.current;
-        if (srcs.length === 0) return;
-        idx = (idx + 1) % srcs.length;
-
-        // Swap visibility
-        if (ssActiveRef.current === "a") {
-          if (ssImgBRef.current) ssImgBRef.current.style.opacity = "1";
-          if (ssImgARef.current) ssImgARef.current.style.opacity = "0";
-          ssActiveRef.current = "b";
-        } else {
-          if (ssImgARef.current) ssImgARef.current.style.opacity = "1";
-          if (ssImgBRef.current) ssImgBRef.current.style.opacity = "0";
-          ssActiveRef.current = "a";
-        }
-
-        // Preload next on the now-hidden buffer after a brief delay
-        setTimeout(preloadNext, 300);
-      }, interval);
+        setSsIdx(prev => (prev + 1) % ssUrls.length);
+      }, ms);
     }
     return () => { if (ssTimerRef.current) clearInterval(ssTimerRef.current); };
-  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs.length > 0]);
+  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssUrls.length]);
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
@@ -302,11 +249,10 @@ export default function App() {
           <video src={bgSrc} autoPlay loop muted style={{ objectFit: bgSettings.bg_fit || "cover" }} />
         </div>
       )}
-      {/* Slideshow BG — double-buffered for lag-free transitions */}
-      {bgSettings?.slideshow_enabled && ssSrcs.length > 0 && (
+      {/* Slideshow BG */}
+      {bgSettings?.slideshow_enabled && ssUrls.length > 0 && (
         <div className="app-bg" style={{ opacity: bgSettings.slideshow_opacity || 0.3 }}>
-          <img ref={ssImgARef} alt="" className="ss-buf" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
-          <img ref={ssImgBRef} alt="" className="ss-buf" style={{ objectFit: bgSettings.slideshow_fit || "cover", opacity: 0 }} />
+          <img src={ssUrls[ssIdx]} alt="" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
         </div>
       )}
       <TitleBar />
