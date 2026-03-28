@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { vaultThumbUrl } from "../hooks/useThumbnails";
+/** Thumbnail that loads via invoke */
+function PickerThumb({ fileId }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    invoke("get_thumbnail", { fileId }).then(b64 => {
+      setSrc(`data:image/jpeg;base64,${b64}`);
+    }).catch(() => {});
+  }, [fileId]);
+  if (!src) return <div style={{ width: "100%", height: "100%", background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--text4)", fontSize: 20 }}>◈</div>;
+  return <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
+}
 
 /** Vault file picker for selecting files as BG or slideshow */
 function VaultFilePicker({ mode, onSelect, onClose }) {
@@ -9,16 +19,13 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
   const [selected, setSelected] = useState(new Set());
 
   useEffect(() => {
-    // Load all image files from vault
     invoke("list_files", { category: "image" }).then(setFiles).catch(() => {});
   }, []);
 
   const toggle = (id) => {
     if (mode === "bg") {
-      // Single select for static BG
       setSelected(new Set([id]));
     } else {
-      // Multi select for slideshow
       setSelected(prev => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id); else next.add(id);
@@ -43,11 +50,10 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
                 border: selected.has(f.id) ? "2px solid var(--cyan)" : "2px solid var(--border)",
                 borderRadius: 8, overflow: "hidden", background: "var(--surface2)", padding: 0, display: "flex", flexDirection: "column"
               }}>
-              <div style={{ width: "100%", aspectRatio: "1", background: "var(--surface)", display: "grid", placeItems: "center", overflow: "hidden" }}>
-                <img src={vaultThumbUrl(f.id)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={e => { e.target.style.display = "none"; }} />
+              <div style={{ width: "100%", aspectRatio: "1", overflow: "hidden" }}>
+                <PickerThumb fileId={f.id} />
               </div>
-              <div style={{ padding: "3px 5px", fontSize: 10, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
+              <div style={{ padding: "3px 5px", fontSize: 10, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%", fontFamily: "var(--font-file)" }}>
                 {f.original_name}
               </div>
             </button>
