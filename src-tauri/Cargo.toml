@@ -28,7 +28,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 
 [profile.release]
 panic = "abort"
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 opt-level = 3
 strip = true
