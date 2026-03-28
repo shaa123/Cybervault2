@@ -183,7 +183,11 @@ export default function App() {
   // Load background as data URL
   const [bgSrc, setBgSrc] = useState(null);
   const [ssSrcs, setSsSrcs] = useState([]);
+  const ssSrcsRef = useRef([]);
   const ssTimerRef = useRef(null);
+
+  // Keep ref in sync with state
+  useEffect(() => { ssSrcsRef.current = ssSrcs; }, [ssSrcs]);
 
   // Load static BG and slideshow settings
   useEffect(() => {
@@ -220,7 +224,6 @@ export default function App() {
             } catch { urls.push(null); }
           }
           setSsSrcs(urls);
-          setSsIdx(0);
           // Load rest in background
           (async () => {
             for (let i = 2; i < ids.length; i++) {
@@ -237,23 +240,24 @@ export default function App() {
     }
   }, [tab, locked, checkingPin]);
 
-  // Slideshow timer — swap src via DOM ref, no React re-render
+  // Slideshow timer — reads from ssSrcsRef so it always has the full array
   const ssImgRef = useRef(null);
   useEffect(() => {
-    if (bgSettings?.slideshow_enabled && ssSrcs.length > 1) {
+    if (bgSettings?.slideshow_enabled && ssSrcs.length > 0) {
       const interval = (bgSettings.slideshow_interval || 5) * 1000;
       let idx = 0;
-      // Set initial
       if (ssImgRef.current && ssSrcs[0]) ssImgRef.current.src = ssSrcs[0];
       ssTimerRef.current = setInterval(() => {
-        idx = (idx + 1) % ssSrcs.length;
-        if (ssImgRef.current && ssSrcs[idx]) {
-          ssImgRef.current.src = ssSrcs[idx];
+        const srcs = ssSrcsRef.current;
+        if (srcs.length === 0) return;
+        idx = (idx + 1) % srcs.length;
+        if (ssImgRef.current && srcs[idx]) {
+          ssImgRef.current.src = srcs[idx];
         }
       }, interval);
     }
     return () => { if (ssTimerRef.current) clearInterval(ssTimerRef.current); };
-  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs]);
+  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs.length > 0]);
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
