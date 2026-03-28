@@ -1,26 +1,27 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-/** Thumbnail that loads via invoke */
-function PickerThumb({ fileId }) {
-  const [src, setSrc] = useState(null);
-  useEffect(() => {
-    invoke("get_thumbnail", { fileId }).then(b64 => {
-      setSrc(`data:image/jpeg;base64,${b64}`);
-    }).catch(() => {});
-  }, [fileId]);
-  if (!src) return <div style={{ width: "100%", height: "100%", background: "var(--surface)", display: "grid", placeItems: "center", color: "var(--text4)", fontSize: 20 }}>◈</div>;
-  return <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
-}
-
-/** Vault file picker for selecting files as BG or slideshow */
+/** Vault file picker — file name list with category filter */
 function VaultFilePicker({ mode, onSelect, onClose }) {
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(new Set());
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
-    invoke("list_files", { category: "image" }).then(setFiles).catch(() => {});
+    Promise.all([
+      invoke("list_files", { category: "image" }),
+      invoke("list_files", { category: "video" }),
+    ]).then(([imgs, vids]) => {
+      setFiles([...imgs.map(f => ({ ...f, cat: "image" })), ...vids.map(f => ({ ...f, cat: "video" }))]);
+    }).catch(() => {});
   }, []);
+
+  const filtered = files.filter(f => {
+    if (filter !== "all" && f.cat !== filter) return false;
+    if (search && !f.original_name.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   const toggle = (id) => {
     if (mode === "bg") {
@@ -34,30 +35,58 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
     }
   };
 
+  const selectAll = () => setSelected(new Set(filtered.map(f => f.id)));
+  const selectNone = () => setSelected(new Set());
+
   return (
     <div className="cat-popup-overlay" onClick={onClose}>
-      <div className="cat-popup" onClick={e => e.stopPropagation()} style={{ minWidth: 500, maxWidth: 600, maxHeight: "70vh", display: "flex", flexDirection: "column" }}>
+      <div className="cat-popup" onClick={e => e.stopPropagation()} style={{ minWidth: 500, maxWidth: 650, maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
         <div className="cat-popup-title">
-          {mode === "bg" ? "SELECT BACKGROUND IMAGE" : "SELECT SLIDESHOW IMAGES"}
+          {mode === "bg" ? "SELECT BACKGROUND FILE" : "SELECT SLIDESHOW FILES"}
         </div>
-        <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 10 }}>
-          {mode === "bg" ? "Pick one image from your vault" : `Pick multiple images (${selected.size} selected)`}
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <select className="sort-select" value={filter} onChange={e => setFilter(e.target.value)} style={{ minWidth: 90 }}>
+            <option value="all">ALL</option>
+            <option value="image">IMAGES</option>
+            <option value="video">VIDEOS</option>
+          </select>
+          <input className="search-input" placeholder="Search..." value={search}
+            onChange={e => setSearch(e.target.value)} style={{ flex: 1 }} />
+          {mode === "slideshow" && (
+            <>
+              <button className="fl-btn fl-btn-muted" onClick={selectAll}>ALL</button>
+              <button className="fl-btn fl-btn-muted" onClick={selectNone}>NONE</button>
+            </>
+          )}
         </div>
-        <div style={{ flex: 1, overflow: "auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, padding: "4px 0" }}>
-          {files.map(f => (
+        <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 6 }}>
+          {filtered.length} files · {selected.size} selected
+        </div>
+        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+          {filtered.slice(0, 500).map(f => (
             <button key={f.id} onClick={() => toggle(f.id)}
               style={{
-                border: selected.has(f.id) ? "2px solid var(--cyan)" : "2px solid var(--border)",
-                borderRadius: 8, overflow: "hidden", background: "var(--surface2)", padding: 0, display: "flex", flexDirection: "column"
+                display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
+                background: selected.has(f.id) ? "rgba(0, 229, 255, 0.1)" : "transparent",
+                border: "none", borderRadius: 4, textAlign: "left", width: "100%",
+                borderLeft: selected.has(f.id) ? "3px solid var(--cyan)" : "3px solid transparent",
               }}>
-              <div style={{ width: "100%", aspectRatio: "1", overflow: "hidden" }}>
-                <PickerThumb fileId={f.id} />
-              </div>
-              <div style={{ padding: "3px 5px", fontSize: 10, color: "var(--text3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", width: "100%", fontFamily: "var(--font-file)" }}>
+              <span style={{ fontSize: 14, color: f.cat === "video" ? "var(--magenta)" : "var(--cyan)", width: 20, textAlign: "center" }}>
+                {f.cat === "video" ? "▶" : "◈"}
+              </span>
+              <span style={{ flex: 1, fontSize: 13, color: "var(--text)", fontFamily: "var(--font-file)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {f.original_name}
-              </div>
+              </span>
+              <span style={{ fontSize: 11, color: "var(--text4)", textTransform: "uppercase" }}>
+                {f.cat}
+              </span>
             </button>
           ))}
+          {filtered.length > 500 && (
+            <div style={{ padding: 10, textAlign: "center", fontSize: 12, color: "var(--text4)" }}>
+              Showing first 500 of {filtered.length} — use search to narrow down
+            </div>
+          )}
         </div>
         <div className="cat-popup-actions" style={{ marginTop: 10 }}>
           <button className="fl-btn fl-btn-primary" onClick={() => onSelect([...selected])}
