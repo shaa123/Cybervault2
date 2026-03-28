@@ -498,7 +498,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .register_uri_scheme_protocol("vault", move |_ctx, request| {
+        .register_asynchronous_uri_scheme_protocol("vault", move |_ctx, request, responder| {
+            let vault = vault_for_protocol.clone();
+            std::thread::spawn(move || {
             let uri = request.uri().to_string();
             let path = uri.strip_prefix("http://vault.localhost/")
                 .or_else(|| uri.strip_prefix("https://vault.localhost/"))
@@ -512,23 +514,20 @@ pub fn run() {
             } else if let Some(id) = path.strip_prefix("thumb/") {
                 ("thumb", id)
             } else {
-                return tauri::http::Response::builder()
-                    .status(404)
-                    .body(b"Not found".to_vec())
-                    .unwrap();
+                responder.respond(tauri::http::Response::builder()
+                    .status(404).body(b"Not found".to_vec()).unwrap());
+                return;
             };
 
             let file_id = file_id_raw.split('?').next().unwrap_or(file_id_raw);
 
-            // Lock mutex briefly to get paths
             let (thumb_path_result, hidden_path, original_name) = {
-                let v = match vault_for_protocol.lock() {
+                let v = match vault.lock() {
                     Ok(v) => v,
                     Err(_) => {
-                        return tauri::http::Response::builder()
-                            .status(500)
-                            .body(b"Lock failed".to_vec())
-                            .unwrap();
+                        responder.respond(tauri::http::Response::builder()
+                            .status(500).body(b"Lock failed".to_vec()).unwrap());
+                        return;
                     }
                 };
                 let tp = if kind == "thumb" { v.get_thumb_file_path(file_id).ok() } else { None };
@@ -538,32 +537,27 @@ pub fn run() {
             };
 
             let file_path;
-            let mut is_animated = false;
 
             if kind == "file" {
                 file_path = match hidden_path {
                     Some(p) => p,
-                    None => return tauri::http::Response::builder()
-                        .status(404).body(b"Not found".to_vec()).unwrap(),
+                    None => {
+                        responder.respond(tauri::http::Response::builder()
+                            .status(404).body(b"Not found".to_vec()).unwrap());
+                        return;
+                    }
                 };
             } else {
-                let name_lower = original_name.to_lowercase();
-                is_animated = name_lower.ends_with(".gif") || name_lower.ends_with(".webm")
-                    || name_lower.ends_with(".mp4");
-
                 if let Some(tp) = thumb_path_result {
-                    // Pre-generated static thumb exists — serve it
-                    // Works for all types including GIFs (serves static JPEG, no autoplay)
                     file_path = tp;
-                    is_animated = false; // Always serve as JPEG
                 } else {
-                    // No thumb — return 404, frontend shows icon
-                    return tauri::http::Response::builder()
-                        .status(404).body(b"No thumbnail".to_vec()).unwrap();
+                    responder.respond(tauri::http::Response::builder()
+                        .status(404).body(b"No thumbnail".to_vec()).unwrap());
+                    return;
                 }
             };
 
-            let mime = if kind == "thumb" && !is_animated {
+            let mime = if kind == "thumb" {
                 "image/jpeg"
             } else {
                 guess_mime_type(&original_name)
@@ -571,38 +565,40 @@ pub fn run() {
 
             let file_size = match std::fs::metadata(&file_path) {
                 Ok(m) => m.len(),
-                Err(_) => return tauri::http::Response::builder()
-                    .status(404).body(b"File missing".to_vec()).unwrap(),
+                Err(_) => {
+                    responder.respond(tauri::http::Response::builder()
+                        .status(404).body(b"File missing".to_vec()).unwrap());
+                    return;
+                }
             };
 
-            // Max chunk size for VIDEO range requests only
             const MAX_CHUNK: u64 = 4 * 1024 * 1024;
-
             use std::io::{Read as _, Seek as _, SeekFrom};
 
             let is_video_type = mime.starts_with("video/");
 
-            // Parse Range header if present
             let range = request.headers()
                 .get("range")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| parse_range(s, file_size));
 
-            // Images and GIFs: always serve the entire file
-            // Videos: use Range requests for seeking
             if !is_video_type && range.is_none() {
                 match std::fs::read(&file_path) {
-                    Ok(data) => return tauri::http::Response::builder()
-                        .status(200)
-                        .header("Content-Type", mime)
-                        .header("Content-Length", data.len().to_string())
-                        .header("Accept-Ranges", "bytes")
-                        .body(data)
-                        .unwrap(),
-                    Err(_) => return tauri::http::Response::builder()
-                        .status(500)
-                        .body(b"Read error".to_vec())
-                        .unwrap(),
+                    Ok(data) => {
+                        responder.respond(tauri::http::Response::builder()
+                            .status(200)
+                            .header("Content-Type", mime)
+                            .header("Content-Length", data.len().to_string())
+                            .header("Accept-Ranges", "bytes")
+                            .body(data)
+                            .unwrap());
+                        return;
+                    }
+                    Err(_) => {
+                        responder.respond(tauri::http::Response::builder()
+                            .status(500).body(b"Read error".to_vec()).unwrap());
+                        return;
+                    }
                 }
             }
 
@@ -611,31 +607,32 @@ pub fn run() {
                     let clamped_end = s.saturating_add(MAX_CHUNK - 1).min(e);
                     (s, clamped_end)
                 }
-                None => {
-                    // Video without Range header — serve first chunk as 206
-                    (0, MAX_CHUNK.min(file_size) - 1)
-                }
+                None => (0, MAX_CHUNK.min(file_size) - 1),
             };
 
             let length = end - start + 1;
             let mut file = match std::fs::File::open(&file_path) {
                 Ok(f) => f,
-                Err(_) => return tauri::http::Response::builder()
-                    .status(500).body(b"Read error".to_vec()).unwrap(),
+                Err(_) => {
+                    responder.respond(tauri::http::Response::builder()
+                        .status(500).body(b"Read error".to_vec()).unwrap());
+                    return;
+                }
             };
             let _ = file.seek(SeekFrom::Start(start));
             let mut buf = vec![0u8; length as usize];
             let bytes_read = file.read(&mut buf).unwrap_or(0);
             buf.truncate(bytes_read);
 
-            tauri::http::Response::builder()
+            responder.respond(tauri::http::Response::builder()
                 .status(206)
                 .header("Content-Type", mime)
                 .header("Content-Length", bytes_read.to_string())
                 .header("Content-Range", format!("bytes {}-{}/{}", start, start + bytes_read as u64 - 1, file_size))
                 .header("Accept-Ranges", "bytes")
                 .body(buf)
-                .unwrap()
+                .unwrap());
+            }); // end thread
         })
         .manage(AppState {
             vault: vault_arc.clone(),
