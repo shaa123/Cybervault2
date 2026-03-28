@@ -210,29 +210,24 @@ export default function App() {
           setBgSrc(null);
         }
 
-        // Slideshow
+        // Slideshow — preload as Image objects for instant swap
         if (s.slideshow_enabled && s.slideshow_file_ids?.length > 0) {
           const ids = s.slideshow_shuffle
             ? [...s.slideshow_file_ids].sort(() => Math.random() - 0.5)
             : s.slideshow_file_ids;
-          // Load first 2 images for fast start
-          const urls = [];
-          for (let i = 0; i < Math.min(2, ids.length); i++) {
+
+          // Load all as data URLs into Image objects (decoded in memory)
+          const preloaded = [];
+          for (const id of ids) {
             try {
-              const url = await invoke("read_vault_file_as_data_url", { fileId: ids[i] });
-              urls.push(url);
-            } catch { urls.push(null); }
+              const url = await invoke("read_vault_file_as_data_url", { fileId: id });
+              // Create Image to force browser decode
+              const img = new Image();
+              img.src = url;
+              preloaded.push(url);
+            } catch { /* skip failed */ }
           }
-          setSsSrcs(urls);
-          // Load rest in background
-          (async () => {
-            for (let i = 2; i < ids.length; i++) {
-              try {
-                const url = await invoke("read_vault_file_as_data_url", { fileId: ids[i] });
-                setSsSrcs(prev => [...prev, url]);
-              } catch { setSsSrcs(prev => [...prev, null]); }
-            }
-          })();
+          setSsSrcs(preloaded);
         } else {
           setSsSrcs([]);
         }
@@ -240,20 +235,52 @@ export default function App() {
     }
   }, [tab, locked, checkingPin]);
 
-  // Slideshow timer — reads from ssSrcsRef so it always has the full array
-  const ssImgRef = useRef(null);
+  // Slideshow — double-buffer: two img elements, preload next before swap
+  const ssImgARef = useRef(null);
+  const ssImgBRef = useRef(null);
+  const ssActiveRef = useRef("a"); // which img is currently visible
   useEffect(() => {
     if (bgSettings?.slideshow_enabled && ssSrcs.length > 0) {
       const interval = (bgSettings.slideshow_interval || 5) * 1000;
       let idx = 0;
-      if (ssImgRef.current && ssSrcs[0]) ssImgRef.current.src = ssSrcs[0];
+
+      // Show first image on A
+      if (ssImgARef.current && ssSrcs[0]) {
+        ssImgARef.current.src = ssSrcs[0];
+        ssImgARef.current.style.opacity = "1";
+      }
+      if (ssImgBRef.current) ssImgBRef.current.style.opacity = "0";
+
+      // Preload next image on hidden buffer
+      const preloadNext = () => {
+        const srcs = ssSrcsRef.current;
+        if (srcs.length <= 1) return;
+        const nextIdx = (idx + 1) % srcs.length;
+        const hidden = ssActiveRef.current === "a" ? ssImgBRef.current : ssImgARef.current;
+        if (hidden && srcs[nextIdx]) hidden.src = srcs[nextIdx];
+      };
+
+      // Preload first next
+      setTimeout(preloadNext, 100);
+
       ssTimerRef.current = setInterval(() => {
         const srcs = ssSrcsRef.current;
         if (srcs.length === 0) return;
         idx = (idx + 1) % srcs.length;
-        if (ssImgRef.current && srcs[idx]) {
-          ssImgRef.current.src = srcs[idx];
+
+        // Swap visibility
+        if (ssActiveRef.current === "a") {
+          if (ssImgBRef.current) ssImgBRef.current.style.opacity = "1";
+          if (ssImgARef.current) ssImgARef.current.style.opacity = "0";
+          ssActiveRef.current = "b";
+        } else {
+          if (ssImgARef.current) ssImgARef.current.style.opacity = "1";
+          if (ssImgBRef.current) ssImgBRef.current.style.opacity = "0";
+          ssActiveRef.current = "a";
         }
+
+        // Preload next on the now-hidden buffer after a brief delay
+        setTimeout(preloadNext, 300);
       }, interval);
     }
     return () => { if (ssTimerRef.current) clearInterval(ssTimerRef.current); };
@@ -275,10 +302,11 @@ export default function App() {
           <video src={bgSrc} autoPlay loop muted style={{ objectFit: bgSettings.bg_fit || "cover" }} />
         </div>
       )}
-      {/* Slideshow BG — img src swapped via ref, no re-render */}
+      {/* Slideshow BG — double-buffered for lag-free transitions */}
       {bgSettings?.slideshow_enabled && ssSrcs.length > 0 && (
         <div className="app-bg" style={{ opacity: bgSettings.slideshow_opacity || 0.3 }}>
-          <img ref={ssImgRef} src={ssSrcs[0] || ""} alt="" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
+          <img ref={ssImgARef} alt="" className="ss-buf" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
+          <img ref={ssImgBRef} alt="" className="ss-buf" style={{ objectFit: bgSettings.slideshow_fit || "cover", opacity: 0 }} />
         </div>
       )}
       <TitleBar />
