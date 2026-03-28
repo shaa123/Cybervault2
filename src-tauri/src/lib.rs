@@ -313,6 +313,32 @@ fn get_missing_video_thumb_ids(state: State<AppState>) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
+fn read_bg_file(path: String) -> Result<String, String> {
+    let data = std::fs::read(&path).map_err(|e| format!("Failed to read bg: {}", e))?;
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "avi" => "video/x-msvideo",
+        "mov" => "video/quicktime",
+        _ => "application/octet-stream",
+    };
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
+#[tauri::command]
 fn debug_info(state: State<AppState>) -> Result<String, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     Ok(vault.debug_info())
@@ -559,6 +585,7 @@ pub fn run() {
             save_thumb_data,
             get_missing_video_thumb_ids,
             has_thumbnail,
+            read_bg_file,
             debug_info,
             set_pin,
             verify_pin,

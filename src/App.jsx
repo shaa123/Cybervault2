@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import NavTabs from "./components/NavTabs";
 import Dashboard from "./components/Dashboard";
@@ -181,17 +180,28 @@ export default function App() {
     } catch (e) { console.error(e); }
   }, [viewingMedia, tab, loadFiles, refreshStats]);
 
-  // Reload BG settings when returning from settings tab
+  // Load background as data URL
+  const [bgSrc, setBgSrc] = useState(null);
+
   useEffect(() => {
     if (!locked && !checkingPin && tab !== "settings") {
-      invoke("get_settings").then(s => {
-        if (s.bg_type && s.bg_data) setBgSettings(s);
-        else setBgSettings(null);
+      invoke("get_settings").then(async (s) => {
+        if (s.bg_type && s.bg_data) {
+          setBgSettings(s);
+          try {
+            const dataUrl = await invoke("read_bg_file", { path: s.bg_data });
+            setBgSrc(dataUrl);
+          } catch (e) {
+            console.error("Failed to load bg:", e);
+            setBgSrc(null);
+          }
+        } else {
+          setBgSettings(null);
+          setBgSrc(null);
+        }
       }).catch(() => {});
     }
   }, [tab, locked, checkingPin]);
-
-  const bgSrc = bgSettings?.bg_data ? convertFileSrc(bgSettings.bg_data) : null;
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
