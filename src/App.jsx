@@ -183,7 +183,6 @@ export default function App() {
   // Load background as data URL
   const [bgSrc, setBgSrc] = useState(null);
   const [ssSrcs, setSsSrcs] = useState([]);
-  const [ssIdx, setSsIdx] = useState(0);
   const ssTimerRef = useRef(null);
 
   // Load static BG and slideshow settings
@@ -238,16 +237,23 @@ export default function App() {
     }
   }, [tab, locked, checkingPin]);
 
-  // Slideshow timer
+  // Slideshow timer — swap src via DOM ref, no React re-render
+  const ssImgRef = useRef(null);
   useEffect(() => {
     if (bgSettings?.slideshow_enabled && ssSrcs.length > 1) {
       const interval = (bgSettings.slideshow_interval || 5) * 1000;
+      let idx = 0;
+      // Set initial
+      if (ssImgRef.current && ssSrcs[0]) ssImgRef.current.src = ssSrcs[0];
       ssTimerRef.current = setInterval(() => {
-        setSsIdx(prev => (prev + 1) % ssSrcs.length);
+        idx = (idx + 1) % ssSrcs.length;
+        if (ssImgRef.current && ssSrcs[idx]) {
+          ssImgRef.current.src = ssSrcs[idx];
+        }
       }, interval);
     }
     return () => { if (ssTimerRef.current) clearInterval(ssTimerRef.current); };
-  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs.length]);
+  }, [bgSettings?.slideshow_enabled, bgSettings?.slideshow_interval, ssSrcs]);
 
   if (checkingPin) return <div className="app" />;
   if (locked) return <LockScreen onUnlock={handleUnlock} />;
@@ -265,10 +271,10 @@ export default function App() {
           <video src={bgSrc} autoPlay loop muted style={{ objectFit: bgSettings.bg_fit || "cover" }} />
         </div>
       )}
-      {/* Slideshow BG */}
-      {bgSettings?.slideshow_enabled && ssSrcs.length > 0 && ssSrcs[ssIdx] && (
+      {/* Slideshow BG — img src swapped via ref, no re-render */}
+      {bgSettings?.slideshow_enabled && ssSrcs.length > 0 && (
         <div className="app-bg" style={{ opacity: bgSettings.slideshow_opacity || 0.3 }}>
-          <img src={ssSrcs[ssIdx]} alt="" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
+          <img ref={ssImgRef} src={ssSrcs[0] || ""} alt="" style={{ objectFit: bgSettings.slideshow_fit || "cover" }} />
         </div>
       )}
       <TitleBar />
