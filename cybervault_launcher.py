@@ -586,14 +586,54 @@ class CyberVaultLauncher:
             self.root.after(0, self._set_status, "BUILDING RELEASE...", MAGENTA)
             self.root.after(0, self._log, "═" * 50, "magenta")
             self.root.after(0, self._log, "BUILDING RELEASE BINARY...", "magenta")
-            self.root.after(0, self._log, "This may take several minutes...", "yellow")
+            self.root.after(0, self._log, "This will take 5-15 minutes on first build...", "yellow")
+            self.root.after(0, self._log, "", None)
 
-            ret, _ = self._run_cmd([NPM, "run", "tauri", "build"], cwd=path)
+            # Check for Rust/Cargo
+            if not CARGO:
+                self.root.after(0, self._log, "ERROR: Rust/Cargo not found!", "red")
+                self.root.after(0, self._log, "  → Install Rust from https://rustup.rs", "yellow")
+                self.root.after(0, self._log, "  → Then restart this launcher", "yellow")
+                self.root.after(0, self._set_status, "BUILD FAILED — NO RUST", RED)
+                return
+
+            ret, output = self._run_cmd([NPM, "run", "tauri", "build"], cwd=path)
             if ret == 0:
-                self.root.after(0, self._log, "Build complete! Check src-tauri/target/release/", "green")
+                # Find the built executable
+                release_dir = os.path.join(path, "src-tauri", "target", "release")
+                bundle_dir = os.path.join(release_dir, "bundle")
+
+                self.root.after(0, self._log, "", None)
+                self.root.after(0, self._log, "═" * 50, "green")
+                self.root.after(0, self._log, "BUILD COMPLETE!", "green")
+                self.root.after(0, self._log, "", None)
+
+                # Check for exe
+                exe_path = os.path.join(release_dir, "cybervault2.exe" if IS_WIN else "cybervault2")
+                if os.path.isfile(exe_path):
+                    size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+                    self.root.after(0, self._log, f"  EXE: {exe_path}", "cyan")
+                    self.root.after(0, self._log, f"  Size: {size_mb:.1f} MB", "cyan")
+
+                # Check for installer bundles
+                if os.path.isdir(bundle_dir):
+                    for root_dir, dirs, files in os.walk(bundle_dir):
+                        for f in files:
+                            if f.endswith((".msi", ".exe", ".nsis", ".deb", ".AppImage", ".dmg")):
+                                fp = os.path.join(root_dir, f)
+                                size_mb = os.path.getsize(fp) / (1024 * 1024)
+                                self.root.after(0, self._log, f"  INSTALLER: {fp}", "cyan")
+                                self.root.after(0, self._log, f"  Size: {size_mb:.1f} MB", "cyan")
+
+                self.root.after(0, self._log, "", None)
+                self.root.after(0, self._log, "You can distribute the installer to users.", "green")
                 self.root.after(0, self._set_status, "BUILD COMPLETE", GREEN)
             else:
-                self.root.after(0, self._log, "Build failed!", "red")
+                self.root.after(0, self._log, "", None)
+                self.root.after(0, self._log, "Build failed! Common fixes:", "red")
+                self.root.after(0, self._log, "  → Install Visual Studio C++ Build Tools", "yellow")
+                self.root.after(0, self._log, "  → Install Rust: https://rustup.rs", "yellow")
+                self.root.after(0, self._log, "  → Run: rustup update", "yellow")
                 self.root.after(0, self._set_status, "BUILD FAILED", RED)
 
         self._threaded(task)
