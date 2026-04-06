@@ -472,9 +472,6 @@
 }
 
 .tag-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 14px;
   font-family: var(--font-file);
   font-weight: 600;
@@ -486,35 +483,17 @@
   border: 1px solid var(--border);
   white-space: nowrap;
   transition: all 0.12s;
-  cursor: pointer;
-}
-
-.tag-chip-name {
-  color: var(--text4);
-}
-
-.tag-chip-count {
-  color: var(--cyan);
-  font-weight: 700;
 }
 
 .tag-chip:hover {
   color: var(--text2);
   border-color: var(--border-light);
 }
-.tag-chip:hover .tag-chip-name {
-  color: var(--text2);
-}
 
 .tag-chip.active {
   background: rgba(0, 229, 255, 0.1);
-  border-color: rgba(0, 229, 255, 0.3);
-}
-.tag-chip.active .tag-chip-name {
-  color: var(--text2);
-}
-.tag-chip.active .tag-chip-count {
   color: var(--cyan);
+  border-color: rgba(0, 229, 255, 0.3);
 }
 
 .tag-chip.small {
