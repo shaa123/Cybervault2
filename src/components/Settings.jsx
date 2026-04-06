@@ -351,6 +351,7 @@ export default function Settings({ stats, onPurge }) {
 
       setImporting(false);
       importingRef.current = false;
+      setImportProgress(null);
       onPurge(); // refresh stats
     } catch (e) {
       console.error("Auto import error:", e);
