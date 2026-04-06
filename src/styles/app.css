@@ -449,6 +449,9 @@
 }
 
 .fl-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
   color: var(--text4);
   letter-spacing: 1.5px;
