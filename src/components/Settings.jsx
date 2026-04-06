@@ -186,7 +186,7 @@ async function captureVideoFrame(fileId) {
   }
 }
 
-export default function Settings({ stats, onPurge }) {
+export default function Settings({ stats, onPurge, watchFolder, watchStatus, onStartWatching, onStopWatching }) {
   const [debugText, setDebugText] = useState("");
   const [caching, setCaching] = useState(false);
   const [cacheProgress, setCacheProgress] = useState(null); // { done, total } or null
@@ -201,13 +201,6 @@ export default function Settings({ stats, onPurge }) {
 
   // Auto-lock
   const [autoLock, setAutoLock] = useState(0);
-
-  // Auto Import (continuous watch)
-  const [watchFolder, setWatchFolder] = useState(null); // folder path being watched
-  const [watchStatus, setWatchStatus] = useState(""); // status text
-  const watchRef = useRef(false);
-  const watchTimerRef = useRef(null);
-  const importedSetRef = useRef(new Set()); // tracks already-imported file paths
 
   // Backup
   const [restoreMsg, setRestoreMsg] = useState("");
@@ -307,63 +300,11 @@ export default function Settings({ stats, onPurge }) {
     setPurging(false);
   };
 
-  const startWatching = async () => {
+  const handleSelectWatchFolder = async () => {
     const folder = await openDialog({ directory: true, title: "Select folder to watch" });
     if (!folder) return;
     const folderPath = folder.path || folder;
-
-    // Initial scan — import everything currently in the folder
-    setWatchFolder(folderPath);
-    watchRef.current = true;
-    importedSetRef.current = new Set();
-    setWatchStatus("Scanning...");
-
-    const scanAndImport = async () => {
-      if (!watchRef.current) return;
-      try {
-        const allFiles = await invoke("list_folder_files", { path: folderPath });
-        const newFiles = allFiles.filter(f => !importedSetRef.current.has(f));
-
-        if (newFiles.length > 0) {
-          setWatchStatus(`Importing ${newFiles.length} new file${newFiles.length !== 1 ? "s" : ""}...`);
-          const BATCH = 50;
-          let imported = 0;
-          for (let i = 0; i < newFiles.length; i += BATCH) {
-            if (!watchRef.current) break;
-            const batch = newFiles.slice(i, i + BATCH);
-            const count = await invoke("hide_files_batch", { paths: batch, category: "auto" });
-            imported += count;
-            await new Promise(r => setTimeout(r, 10));
-          }
-          // Mark all scanned files as known (even if import failed — file was moved)
-          for (const f of newFiles) importedSetRef.current.add(f);
-          if (imported > 0) onPurge();
-          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
-        } else {
-          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
-        }
-      } catch (e) {
-        console.error("Watch scan error:", e);
-        setWatchStatus("Error scanning — retrying...");
-      }
-    };
-
-    // Run first scan immediately
-    await scanAndImport();
-
-    // Then poll every 5 seconds
-    watchTimerRef.current = setInterval(scanAndImport, 5000);
-  };
-
-  const stopWatching = () => {
-    watchRef.current = false;
-    if (watchTimerRef.current) {
-      clearInterval(watchTimerRef.current);
-      watchTimerRef.current = null;
-    }
-    setWatchFolder(null);
-    setWatchStatus("");
-    importedSetRef.current = new Set();
+    onStartWatching(folderPath);
   };
 
   const handleBackupToFile = async () => {
@@ -467,13 +408,9 @@ export default function Settings({ stats, onPurge }) {
     setCaching(false);
   };
 
-  // Stop caching/watching on unmount
+  // Stop caching on unmount
   useEffect(() => {
-    return () => {
-      cachingRef.current = false;
-      watchRef.current = false;
-      if (watchTimerRef.current) clearInterval(watchTimerRef.current);
-    };
+    return () => { cachingRef.current = false; };
   }, []);
 
   const AUTO_LOCK_OPTIONS = [
@@ -746,11 +683,11 @@ export default function Settings({ stats, onPurge }) {
                     )}
                   </div>
                   {watchFolder ? (
-                    <button className="fl-btn fl-btn-danger" onClick={stopWatching}>
+                    <button className="fl-btn fl-btn-danger" onClick={onStopWatching}>
                       STOP
                     </button>
                   ) : (
-                    <button className="fl-btn fl-btn-primary" onClick={startWatching}>
+                    <button className="fl-btn fl-btn-primary" onClick={handleSelectWatchFolder}>
                       SELECT FOLDER
                     </button>
                   )}

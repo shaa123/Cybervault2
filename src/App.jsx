@@ -32,6 +32,13 @@ export default function App() {
   const [viewingMedia, setViewingMedia] = useState(null);
   const [bgSettings, setBgSettings] = useState(null);
 
+  // Folder watcher (persists across tabs)
+  const [watchFolder, setWatchFolder] = useState(null);
+  const [watchStatus, setWatchStatus] = useState("");
+  const watchRef = useRef(false);
+  const watchTimerRef = useRef(null);
+  const importedSetRef = useRef(new Set());
+
   // Load background settings (only when unlocked)
   useEffect(() => {
     if (!locked && !checkingPin) {
@@ -132,6 +139,68 @@ export default function App() {
     if (tab !== "home" && tab !== "settings") loadFiles(tab);
     refreshStats();
   };
+
+  const startWatching = useCallback(async (folderPath) => {
+    setWatchFolder(folderPath);
+    watchRef.current = true;
+    importedSetRef.current = new Set();
+    setWatchStatus("Scanning...");
+
+    const scanAndImport = async () => {
+      if (!watchRef.current) return;
+      try {
+        const allFiles = await invoke("list_folder_files", { path: folderPath });
+        const newFiles = allFiles.filter(f => !importedSetRef.current.has(f));
+
+        if (newFiles.length > 0) {
+          setWatchStatus(`Importing ${newFiles.length} new file${newFiles.length !== 1 ? "s" : ""}...`);
+          const BATCH = 50;
+          let imported = 0;
+          for (let i = 0; i < newFiles.length; i += BATCH) {
+            if (!watchRef.current) break;
+            const batch = newFiles.slice(i, i + BATCH);
+            const count = await invoke("hide_files_batch", { paths: batch, category: "auto" });
+            imported += count;
+            await new Promise(r => setTimeout(r, 10));
+          }
+          for (const f of newFiles) importedSetRef.current.add(f);
+          if (imported > 0) refreshStats();
+          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
+        } else {
+          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
+        }
+      } catch (e) {
+        console.error("Watch scan error:", e);
+        setWatchStatus("Error scanning — retrying...");
+      }
+    };
+
+    await scanAndImport();
+    watchTimerRef.current = setInterval(scanAndImport, 5000);
+  }, [refreshStats]);
+
+  const stopWatching = useCallback(() => {
+    watchRef.current = false;
+    if (watchTimerRef.current) {
+      clearInterval(watchTimerRef.current);
+      watchTimerRef.current = null;
+    }
+    setWatchFolder(null);
+    setWatchStatus("");
+    importedSetRef.current = new Set();
+  }, []);
+
+  // Cleanup watcher on unmount or lock
+  useEffect(() => {
+    if (locked && watchFolder) stopWatching();
+  }, [locked, watchFolder, stopWatching]);
+
+  useEffect(() => {
+    return () => {
+      watchRef.current = false;
+      if (watchTimerRef.current) clearInterval(watchTimerRef.current);
+    };
+  }, []);
 
   const openEditor = (note = null) => { setEditingNote(note); setView("editor"); };
   const closeEditor = () => {
@@ -259,7 +328,9 @@ export default function App() {
         {tab === "home" ? (
           <Dashboard stats={stats} onOpenCategory={setTab} />
         ) : tab === "settings" ? (
-          <Settings stats={stats} onPurge={handleChanged} />
+          <Settings stats={stats} onPurge={handleChanged}
+            watchFolder={watchFolder} watchStatus={watchStatus}
+            onStartWatching={startWatching} onStopWatching={stopWatching} />
         ) : view === "editor" ? (
           <NoteEditor note={editingNote} onSave={handleChanged} onBack={closeEditor} />
         ) : (
