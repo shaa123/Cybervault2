@@ -354,22 +354,38 @@ export default function FileList({ category, files, color, onChanged, onEditNote
       )}
 
 
-      {/* Tag filter dropdown */}
+      {/* Tag filter chips */}
       {tags.length > 0 && (
         <div className="tag-bar">
-          <select
-            className="sort-select"
-            value={activeTag}
-            onChange={e => setActiveTag(e.target.value)}
+          <button
+            className={`tag-chip ${activeTag === "" ? "active" : ""}`}
+            onClick={() => setActiveTag("")}
           >
-            <option value="">ALL ({files.length})</option>
-            {tags.map(t => (
-              <option key={t} value={t}>{t} ({files.filter(f => f.tag === t).length})</option>
-            ))}
-            {files.some(f => !f.tag) && (
-              <option value="__untagged">UNSORTED ({files.filter(f => !f.tag).length})</option>
-            )}
-          </select>
+            <span className="tag-chip-name">ALL</span>
+            <span className="tag-chip-count">{files.length}</span>
+          </button>
+          {tags.map(t => {
+            const count = files.filter(f => f.tag === t).length;
+            return (
+              <button
+                key={t}
+                className={`tag-chip ${activeTag === t ? "active" : ""}`}
+                onClick={() => setActiveTag(activeTag === t ? "" : t)}
+              >
+                <span className="tag-chip-name">{t}</span>
+                <span className="tag-chip-count">{count}</span>
+              </button>
+            );
+          })}
+          {files.some(f => !f.tag) && (
+            <button
+              className={`tag-chip ${activeTag === "__untagged" ? "active" : ""}`}
+              onClick={() => setActiveTag(activeTag === "__untagged" ? "" : "__untagged")}
+            >
+              <span className="tag-chip-name">UNSORTED</span>
+              <span className="tag-chip-count">{files.filter(f => !f.tag).length}</span>
+            </button>
+          )}
         </div>
       )}
 
