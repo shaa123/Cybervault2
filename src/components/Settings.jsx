@@ -202,6 +202,11 @@ export default function Settings({ stats, onPurge }) {
   // Auto-lock
   const [autoLock, setAutoLock] = useState(0);
 
+  // Auto Import
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null); // { done, total, images, videos, documents }
+  const importingRef = useRef(false);
+
   // Backup
   const [restoreMsg, setRestoreMsg] = useState("");
 
@@ -298,6 +303,61 @@ export default function Settings({ stats, onPurge }) {
       setDebugText(await invoke("debug_info"));
     } catch (e) { console.error(e); }
     setPurging(false);
+  };
+
+  const handleAutoImport = async () => {
+    try {
+      const folder = await openDialog({ directory: true, title: "Select folder to auto-import" });
+      if (!folder) return;
+      const folderPath = folder.path || folder;
+
+      setImporting(true);
+      importingRef.current = true;
+      setImportProgress({ done: 0, total: 0, images: 0, videos: 0, documents: 0 });
+
+      // Get all files in the folder recursively
+      const allFiles = await invoke("list_folder_files", { path: folderPath });
+      if (allFiles.length === 0) {
+        setImportProgress(null);
+        setImporting(false);
+        importingRef.current = false;
+        return;
+      }
+
+      // Categorize files for the progress display
+      const IMAGE_EXTS = /\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff)$/i;
+      const VIDEO_EXTS = /\.(mp4|avi|mkv|mov|wmv|flv|webm)$/i;
+
+      let imgCount = 0, vidCount = 0, docCount = 0;
+      for (const f of allFiles) {
+        if (IMAGE_EXTS.test(f)) imgCount++;
+        else if (VIDEO_EXTS.test(f)) vidCount++;
+        else docCount++;
+      }
+
+      setImportProgress({ done: 0, total: allFiles.length, images: imgCount, videos: vidCount, documents: docCount });
+
+      // Import in batches of 50 using "auto" category (Rust auto-detects type)
+      const BATCH = 50;
+      let done = 0;
+      for (let i = 0; i < allFiles.length; i += BATCH) {
+        if (!importingRef.current) break;
+        const batch = allFiles.slice(i, i + BATCH);
+        const count = await invoke("hide_files_batch", { paths: batch, category: "auto" });
+        done += count;
+        setImportProgress(prev => ({ ...prev, done }));
+        await new Promise(r => setTimeout(r, 10));
+      }
+
+      setImporting(false);
+      importingRef.current = false;
+      onPurge(); // refresh stats
+    } catch (e) {
+      console.error("Auto import error:", e);
+      setImporting(false);
+      importingRef.current = false;
+      setImportProgress(null);
+    }
   };
 
   const handleBackupToFile = async () => {
@@ -401,9 +461,9 @@ export default function Settings({ stats, onPurge }) {
     setCaching(false);
   };
 
-  // Stop caching on unmount
+  // Stop caching/importing on unmount
   useEffect(() => {
-    return () => { cachingRef.current = false; };
+    return () => { cachingRef.current = false; importingRef.current = false; };
   }, []);
 
   const AUTO_LOCK_OPTIONS = [
@@ -653,6 +713,38 @@ export default function Settings({ stats, onPurge }) {
                   <button className={`fl-btn ${caching ? "fl-btn-danger" : "fl-btn-primary"}`} onClick={toggleCaching}>
                     {caching ? "STOP" : "START"}
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Auto Import Folder */}
+            <div className="settings-section">
+              <div className="settings-section-title">AUTO IMPORT FOLDER</div>
+              <div className="settings-actions">
+                <div className="settings-action-row">
+                  <div className="settings-action-info">
+                    <div className="settings-action-name">IMPORT FROM FOLDER</div>
+                    <div className="settings-action-desc">
+                      {importProgress && importProgress.total > 0
+                        ? `${importProgress.done} / ${importProgress.total} imported (${importProgress.images} images, ${importProgress.videos} videos, ${importProgress.documents} docs)`
+                        : "Select a folder — files auto-sort to Images, Videos, or Docs by type"}
+                    </div>
+                    {importProgress && importProgress.total > 0 && (
+                      <div className="upload-progress-bar" style={{ marginTop: 6 }}>
+                        <div className="upload-progress-fill"
+                          style={{ width: `${Math.round((importProgress.done / importProgress.total) * 100)}%` }} />
+                      </div>
+                    )}
+                  </div>
+                  {importing ? (
+                    <button className="fl-btn fl-btn-danger" onClick={() => { importingRef.current = false; }}>
+                      STOP
+                    </button>
+                  ) : (
+                    <button className="fl-btn fl-btn-primary" onClick={handleAutoImport}>
+                      SELECT FOLDER
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

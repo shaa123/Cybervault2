@@ -368,6 +368,18 @@ fn get_storage_info(state: State<AppState>) -> Result<serde_json::Value, String>
 }
 
 #[tauri::command]
+fn list_folder_files(path: String) -> Result<Vec<String>, String> {
+    use walkdir::WalkDir;
+    let mut files = Vec::new();
+    for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+        if entry.file_type().is_file() {
+            files.push(entry.path().to_string_lossy().to_string());
+        }
+    }
+    Ok(files)
+}
+
+#[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| format!("Write failed: {}", e))
 }
@@ -664,6 +676,7 @@ pub fn run() {
             get_missing_video_thumb_ids,
             has_thumbnail,
             get_storage_info,
+            list_folder_files,
             write_file,
             read_file,
             read_bg_file,
