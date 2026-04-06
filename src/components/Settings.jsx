@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { captureVideoFrame } from "../hooks/videoThumb";
 /** Vault file picker — file name list with category filter */
 function VaultFilePicker({ mode, onSelect, onClose }) {
   const [files, setFiles] = useState([]);
@@ -98,92 +99,6 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
       </div>
     </div>
   );
-}
-
-/** Capture first frame of a video via invoke (avoids protocol deadlock) */
-async function captureVideoFrame(fileId) {
-  try {
-    console.log(`[THUMB] Starting video capture for ${fileId}`);
-    const b64 = await invoke("get_file_preview_chunk", { fileId, maxBytes: 8 * 1024 * 1024 });
-    console.log(`[THUMB] Got ${b64.length} bytes of base64 data`);
-
-    // Try multiple mime types — WebM needs different mime
-    const mimeTypes = ["video/mp4", "video/webm", "video/x-matroska"];
-
-    for (const mime of mimeTypes) {
-      try {
-        const binary = atob(b64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: mime });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const result = await new Promise((resolve) => {
-          const video = document.createElement("video");
-          video.muted = true;
-          video.preload = "auto";
-          video.src = blobUrl;
-
-          const timeout = setTimeout(() => {
-            console.log(`[THUMB] Timeout with mime ${mime}`);
-            URL.revokeObjectURL(blobUrl);
-            video.src = "";
-            resolve(null);
-          }, 10000);
-
-          video.onloadeddata = () => {
-            console.log(`[THUMB] Loaded with mime ${mime}, dimensions: ${video.videoWidth}x${video.videoHeight}`);
-            video.currentTime = 0.1;
-          };
-
-          video.onseeked = () => {
-            clearTimeout(timeout);
-            console.log(`[THUMB] Seeked, capturing frame`);
-            try {
-              const canvas = document.createElement("canvas");
-              canvas.width = 256;
-              canvas.height = 256;
-              const ctx = canvas.getContext("2d");
-              const scale = Math.max(256 / video.videoWidth, 256 / video.videoHeight);
-              const w = video.videoWidth * scale;
-              const h = video.videoHeight * scale;
-              ctx.drawImage(video, (256 - w) / 2, (256 - h) / 2, w, h);
-              const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-              URL.revokeObjectURL(blobUrl);
-              video.src = "";
-              resolve(dataUrl.split(",")[1]);
-            } catch (e) {
-              console.log(`[THUMB] Canvas error: ${e}`);
-              URL.revokeObjectURL(blobUrl);
-              video.src = "";
-              resolve(null);
-            }
-          };
-
-          video.onerror = (e) => {
-            clearTimeout(timeout);
-            console.log(`[THUMB] Video error with mime ${mime}: ${e?.message || e}`);
-            URL.revokeObjectURL(blobUrl);
-            video.src = "";
-            resolve(null);
-          };
-        });
-
-        if (result) {
-          console.log(`[THUMB] Success with mime ${mime}`);
-          return result;
-        }
-      } catch (e) {
-        console.log(`[THUMB] Failed with mime ${mime}: ${e}`);
-      }
-    }
-
-    console.log(`[THUMB] All mime types failed for ${fileId}`);
-    return null;
-  } catch (e) {
-    console.log(`[THUMB] Invoke error: ${e}`);
-    return null;
-  }
 }
 
 export default function Settings({ stats, onPurge, watchFolder, watchStatus, onStartWatching, onStopWatching }) {
