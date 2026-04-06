@@ -202,10 +202,12 @@ export default function Settings({ stats, onPurge }) {
   // Auto-lock
   const [autoLock, setAutoLock] = useState(0);
 
-  // Auto Import
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState(null); // { done, total, images, videos, documents }
-  const importingRef = useRef(false);
+  // Auto Import (continuous watch)
+  const [watchFolder, setWatchFolder] = useState(null); // folder path being watched
+  const [watchStatus, setWatchStatus] = useState(""); // status text
+  const watchRef = useRef(false);
+  const watchTimerRef = useRef(null);
+  const importedSetRef = useRef(new Set()); // tracks already-imported file paths
 
   // Backup
   const [restoreMsg, setRestoreMsg] = useState("");
@@ -305,60 +307,63 @@ export default function Settings({ stats, onPurge }) {
     setPurging(false);
   };
 
-  const handleAutoImport = async () => {
-    try {
-      const folder = await openDialog({ directory: true, title: "Select folder to auto-import" });
-      if (!folder) return;
-      const folderPath = folder.path || folder;
+  const startWatching = async () => {
+    const folder = await openDialog({ directory: true, title: "Select folder to watch" });
+    if (!folder) return;
+    const folderPath = folder.path || folder;
 
-      setImporting(true);
-      importingRef.current = true;
-      setImportProgress({ done: 0, total: 0, images: 0, videos: 0, documents: 0 });
+    // Initial scan — import everything currently in the folder
+    setWatchFolder(folderPath);
+    watchRef.current = true;
+    importedSetRef.current = new Set();
+    setWatchStatus("Scanning...");
 
-      // Get all files in the folder recursively
-      const allFiles = await invoke("list_folder_files", { path: folderPath });
-      if (allFiles.length === 0) {
-        setImportProgress(null);
-        setImporting(false);
-        importingRef.current = false;
-        return;
+    const scanAndImport = async () => {
+      if (!watchRef.current) return;
+      try {
+        const allFiles = await invoke("list_folder_files", { path: folderPath });
+        const newFiles = allFiles.filter(f => !importedSetRef.current.has(f));
+
+        if (newFiles.length > 0) {
+          setWatchStatus(`Importing ${newFiles.length} new file${newFiles.length !== 1 ? "s" : ""}...`);
+          const BATCH = 50;
+          let imported = 0;
+          for (let i = 0; i < newFiles.length; i += BATCH) {
+            if (!watchRef.current) break;
+            const batch = newFiles.slice(i, i + BATCH);
+            const count = await invoke("hide_files_batch", { paths: batch, category: "auto" });
+            imported += count;
+            await new Promise(r => setTimeout(r, 10));
+          }
+          // Mark all scanned files as known (even if import failed — file was moved)
+          for (const f of newFiles) importedSetRef.current.add(f);
+          if (imported > 0) onPurge();
+          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
+        } else {
+          setWatchStatus(`Watching · ${importedSetRef.current.size} files imported`);
+        }
+      } catch (e) {
+        console.error("Watch scan error:", e);
+        setWatchStatus("Error scanning — retrying...");
       }
+    };
 
-      // Categorize files for the progress display
-      const IMAGE_EXTS = /\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff)$/i;
-      const VIDEO_EXTS = /\.(mp4|avi|mkv|mov|wmv|flv|webm)$/i;
+    // Run first scan immediately
+    await scanAndImport();
 
-      let imgCount = 0, vidCount = 0, docCount = 0;
-      for (const f of allFiles) {
-        if (IMAGE_EXTS.test(f)) imgCount++;
-        else if (VIDEO_EXTS.test(f)) vidCount++;
-        else docCount++;
-      }
+    // Then poll every 5 seconds
+    watchTimerRef.current = setInterval(scanAndImport, 5000);
+  };
 
-      setImportProgress({ done: 0, total: allFiles.length, images: imgCount, videos: vidCount, documents: docCount });
-
-      // Import in batches of 50 using "auto" category (Rust auto-detects type)
-      const BATCH = 50;
-      let done = 0;
-      for (let i = 0; i < allFiles.length; i += BATCH) {
-        if (!importingRef.current) break;
-        const batch = allFiles.slice(i, i + BATCH);
-        const count = await invoke("hide_files_batch", { paths: batch, category: "auto" });
-        done += count;
-        setImportProgress(prev => ({ ...prev, done }));
-        await new Promise(r => setTimeout(r, 10));
-      }
-
-      setImporting(false);
-      importingRef.current = false;
-      setImportProgress(null);
-      onPurge(); // refresh stats
-    } catch (e) {
-      console.error("Auto import error:", e);
-      setImporting(false);
-      importingRef.current = false;
-      setImportProgress(null);
+  const stopWatching = () => {
+    watchRef.current = false;
+    if (watchTimerRef.current) {
+      clearInterval(watchTimerRef.current);
+      watchTimerRef.current = null;
     }
+    setWatchFolder(null);
+    setWatchStatus("");
+    importedSetRef.current = new Set();
   };
 
   const handleBackupToFile = async () => {
@@ -462,9 +467,13 @@ export default function Settings({ stats, onPurge }) {
     setCaching(false);
   };
 
-  // Stop caching/importing on unmount
+  // Stop caching/watching on unmount
   useEffect(() => {
-    return () => { cachingRef.current = false; importingRef.current = false; };
+    return () => {
+      cachingRef.current = false;
+      watchRef.current = false;
+      if (watchTimerRef.current) clearInterval(watchTimerRef.current);
+    };
   }, []);
 
   const AUTO_LOCK_OPTIONS = [
@@ -724,25 +733,24 @@ export default function Settings({ stats, onPurge }) {
               <div className="settings-actions">
                 <div className="settings-action-row">
                   <div className="settings-action-info">
-                    <div className="settings-action-name">IMPORT FROM FOLDER</div>
+                    <div className="settings-action-name">WATCH FOLDER</div>
                     <div className="settings-action-desc">
-                      {importProgress && importProgress.total > 0
-                        ? `${importProgress.done} / ${importProgress.total} imported (${importProgress.images} images, ${importProgress.videos} videos, ${importProgress.documents} docs)`
-                        : "Select a folder — files auto-sort to Images, Videos, or Docs by type"}
+                      {watchFolder
+                        ? watchStatus
+                        : "Select a folder to watch — new files auto-import to Images, Videos, or Docs"}
                     </div>
-                    {importProgress && importProgress.total > 0 && (
-                      <div className="upload-progress-bar" style={{ marginTop: 6 }}>
-                        <div className="upload-progress-fill"
-                          style={{ width: `${Math.round((importProgress.done / importProgress.total) * 100)}%` }} />
+                    {watchFolder && (
+                      <div style={{ fontSize: 11, color: "var(--text4)", wordBreak: "break-all", padding: "2px 0" }}>
+                        {watchFolder}
                       </div>
                     )}
                   </div>
-                  {importing ? (
-                    <button className="fl-btn fl-btn-danger" onClick={() => { importingRef.current = false; }}>
+                  {watchFolder ? (
+                    <button className="fl-btn fl-btn-danger" onClick={stopWatching}>
                       STOP
                     </button>
                   ) : (
-                    <button className="fl-btn fl-btn-primary" onClick={handleAutoImport}>
+                    <button className="fl-btn fl-btn-primary" onClick={startWatching}>
                       SELECT FOLDER
                     </button>
                   )}

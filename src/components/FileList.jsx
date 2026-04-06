@@ -315,6 +315,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         {showCategories && (
           <button className="fl-btn fl-btn-muted" onClick={openCatBrowse}>CATEGORY</button>
         )}
+        {isGridView && (
+          <button className="fl-btn fl-btn-muted" onClick={() => { setSort("random"); onChanged(); }}>SHUFFLE</button>
+        )}
         {category === "note" && (
           <button className="fl-btn fl-btn-primary" onClick={() => onEditNote(null)}>+ NEW NOTE</button>
         )}
@@ -385,7 +388,6 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         {filteredFiles.length} FILE{filteredFiles.length !== 1 ? "S" : ""}
         {isGridView && <span className="fl-hint"> · CTRL+A SELECT ALL</span>}
         <select className="sort-select" value={sort} onChange={e => setSort(e.target.value)} style={{ marginLeft: "auto" }}>
-          {isGridView && <option value="random">RANDOM</option>}
           <option value="date-desc">NEWEST</option>
           <option value="date-asc">OLDEST</option>
           <option value="size-desc">LARGEST</option>
