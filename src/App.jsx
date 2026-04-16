@@ -59,12 +59,16 @@ export default function App() {
 
   // Auto-lock: lock after inactivity
   const autoLockSecs = useRef(0);
+  const hasPinRef = useRef(false);
 
-  // Load auto-lock setting once on unlock
+  // Load auto-lock setting and PIN presence once on unlock — cached for idle checks
   useEffect(() => {
     if (!locked) {
       invoke("get_settings")
         .then(s => { autoLockSecs.current = s.auto_lock_secs || 0; })
+        .catch(() => {});
+      invoke("has_pin")
+        .then(h => { hasPinRef.current = !!h; })
         .catch(() => {});
     }
   }, [locked]);
@@ -73,26 +77,25 @@ export default function App() {
     if (locked) return;
 
     let lastActivity = Date.now();
-
     const onActivity = () => { lastActivity = Date.now(); };
 
-    const checkIdle = setInterval(async () => {
-      const secs = autoLockSecs.current;
-      if (secs <= 0) return;
-      const idle = (Date.now() - lastActivity) / 1000;
-      if (idle >= secs) {
-        try {
-          const has = await invoke("has_pin");
-          if (has) setLocked(true);
-        } catch (e) { /* ignore */ }
-      }
-    }, 5000); // Check every 5 seconds
+    // Only install the interval if auto-lock is actually enabled AND a PIN exists.
+    // We poll every 10s (not 5s) and skip the extra has_pin invoke on each tick.
+    let checkIdle = null;
+    if (autoLockSecs.current > 0 && hasPinRef.current) {
+      checkIdle = setInterval(() => {
+        const secs = autoLockSecs.current;
+        if (secs <= 0 || !hasPinRef.current) return;
+        const idle = (Date.now() - lastActivity) / 1000;
+        if (idle >= secs) setLocked(true);
+      }, 10000);
+    }
 
     const events = ["mousemove", "keydown", "click", "scroll", "mousedown"];
     events.forEach(ev => window.addEventListener(ev, onActivity));
     return () => {
       events.forEach(ev => window.removeEventListener(ev, onActivity));
-      clearInterval(checkIdle);
+      if (checkIdle) clearInterval(checkIdle);
     };
   }, [locked]);
 
@@ -104,15 +107,23 @@ export default function App() {
     } catch (e) { return false; }
   };
 
-  const refreshStats = useCallback(async () => {
-    try { setStats(await invoke("get_stats")); } catch (e) { console.error(e); }
+  // Debounced stat refresh — collapses bursts (batch import, batch delete, tag assign)
+  // into a single invoke instead of one per file operation.
+  const refreshStatsTimer = useRef(null);
+  const refreshStats = useCallback(() => {
+    if (refreshStatsTimer.current) clearTimeout(refreshStatsTimer.current);
+    refreshStatsTimer.current = setTimeout(async () => {
+      refreshStatsTimer.current = null;
+      try { setStats(await invoke("get_stats")); } catch (e) { console.error(e); }
+    }, 150);
   }, []);
 
-  const loadFiles = useCallback(async (category) => {
+  const loadFiles = useCallback(async (category, shuffle = false) => {
     try {
       const f = await invoke("list_files", { category });
-      // Shuffle for image/video tabs
-      if (category === "image" || category === "video") {
+      // Shuffle only when explicitly requested (tab change or SHUFFLE button).
+      // Previously re-shuffled on every file mutation, which was wasted work.
+      if (shuffle && (category === "image" || category === "video")) {
         for (let i = f.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [f[i], f[j]] = [f[j], f[i]];
@@ -128,17 +139,17 @@ export default function App() {
 
   useEffect(() => {
     if (tab !== "home" && tab !== "settings") {
-      loadFiles(tab);
+      loadFiles(tab, true);
       setView("list");
       setEditingNote(null);
       setViewingMedia(null);
     }
   }, [tab, loadFiles]);
 
-  const handleChanged = () => {
-    if (tab !== "home" && tab !== "settings") loadFiles(tab);
+  const handleChanged = useCallback(() => {
+    if (tab !== "home" && tab !== "settings") loadFiles(tab, false);
     refreshStats();
-  };
+  }, [tab, loadFiles, refreshStats]);
 
   const startWatching = useCallback(async (folderPath) => {
     setWatchFolder(folderPath);
@@ -148,6 +159,8 @@ export default function App() {
 
     const scanAndImport = async () => {
       if (!watchRef.current) return;
+      // Skip when the window is hidden — no point doing disk I/O the user can't see.
+      if (typeof document !== "undefined" && document.hidden) return;
       try {
         const allFiles = await invoke("list_folder_files", { path: folderPath });
         const newFiles = allFiles.filter(f => !importedSetRef.current.has(f));
@@ -176,7 +189,9 @@ export default function App() {
     };
 
     await scanAndImport();
-    watchTimerRef.current = setInterval(scanAndImport, 5000);
+    // 15s cadence (was 5s) and the visibility guard above means a hidden window
+    // uses effectively zero CPU/disk for the watcher.
+    watchTimerRef.current = setInterval(scanAndImport, 15000);
   }, [refreshStats]);
 
   const stopWatching = useCallback(() => {
@@ -261,16 +276,18 @@ export default function App() {
         setBgSettings(s);
 
         // Static BG
+        // For vault-sourced files we now stream through the vault:// protocol
+        // (no base64 round-trip, no full file in JS memory). Local file paths still
+        // use the legacy base64 invoke because they aren't served by the protocol.
         if (s.bg_type && s.bg_data) {
-          try {
-            let dataUrl;
-            if (s.bg_data.startsWith("vault:")) {
-              dataUrl = await invoke("read_vault_file_as_data_url", { fileId: s.bg_data.slice(6) });
-            } else {
-              dataUrl = await invoke("read_bg_file", { path: s.bg_data });
-            }
-            setBgSrc(dataUrl);
-          } catch (e) { setBgSrc(null); }
+          if (s.bg_data.startsWith("vault:")) {
+            setBgSrc(vaultFileUrl(s.bg_data.slice(6)));
+          } else {
+            try {
+              const dataUrl = await invoke("read_bg_file", { path: s.bg_data });
+              setBgSrc(dataUrl);
+            } catch (e) { setBgSrc(null); }
+          }
         } else {
           setBgSrc(null);
         }

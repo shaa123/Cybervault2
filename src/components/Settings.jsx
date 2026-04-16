@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 /** Vault file picker — file name list with category filter */
+const PAGE_SIZE = 100;
+
 function VaultFilePicker({ mode, onSelect, onClose }) {
   const [files, setFiles] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -17,11 +20,20 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
     }).catch(() => {});
   }, []);
 
+  // Reset to page 0 when the filter/search changes so the user doesn't land
+  // on an empty later page.
+  useEffect(() => { setPage(0); }, [filter, search]);
+
   const filtered = files.filter(f => {
     if (filter !== "all" && f.cat !== filter) return false;
     if (search && !f.original_name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageStart = page * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
+  const pageFiles = filtered.slice(pageStart, pageEnd);
 
   const toggle = (id) => {
     if (mode === "bg") {
@@ -61,9 +73,10 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
         </div>
         <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 6 }}>
           {filtered.length} files · {selected.size} selected
+          {totalPages > 1 && ` · page ${page + 1} / ${totalPages}`}
         </div>
         <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-          {filtered.slice(0, 500).map(f => (
+          {pageFiles.map(f => (
             <button key={f.id} onClick={() => toggle(f.id)}
               style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "6px 10px",
@@ -82,12 +95,18 @@ function VaultFilePicker({ mode, onSelect, onClose }) {
               </span>
             </button>
           ))}
-          {filtered.length > 500 && (
-            <div style={{ padding: 10, textAlign: "center", fontSize: 12, color: "var(--text4)" }}>
-              Showing first 500 of {filtered.length} — use search to narrow down
-            </div>
-          )}
         </div>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center", marginTop: 8 }}>
+            <button className="fl-btn fl-btn-muted" disabled={page === 0}
+              onClick={() => setPage(p => Math.max(0, p - 1))}>PREV</button>
+            <span style={{ fontSize: 11, color: "var(--text4)" }}>
+              {pageStart + 1}–{Math.min(pageEnd, filtered.length)} of {filtered.length}
+            </span>
+            <button className="fl-btn fl-btn-muted" disabled={page >= totalPages - 1}
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}>NEXT</button>
+          </div>
+        )}
         <div className="cat-popup-actions" style={{ marginTop: 10 }}>
           <button className="fl-btn fl-btn-primary" onClick={() => onSelect([...selected])}
             disabled={selected.size === 0}>
