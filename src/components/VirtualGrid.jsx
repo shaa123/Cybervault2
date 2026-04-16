@@ -11,7 +11,7 @@ function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(2) + " GB";
 }
 
-export default function VirtualGrid({
+function VirtualGrid({
   files, selected, onToggleSelect, onViewMedia, onUnhide, onDelete,
   getThumbnail, generateForVisible, scrollToFileId,
 }) {
@@ -145,3 +145,8 @@ export default function VirtualGrid({
     </div>
   );
 }
+
+// Memo the grid so stat refreshes / unrelated parent re-renders don't re-run
+// the full virtualizer + tile tree. Only re-render when the inputs that
+// actually affect the rendered output change.
+export default React.memo(VirtualGrid);

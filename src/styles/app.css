@@ -2,6 +2,18 @@
    CYBERVAULT 2 — 16px BASE
    ═══════════════════════════════════════════════ */
 
+/* Respect the OS-level accessibility pref: neutralize long-running loops
+   (logo pulse, rainbow shift, shimmer, neon flicker, etc.) so they don't
+   burn CPU/GPU on reduced-motion systems. Transitions are kept but shortened. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .app {
   width: 100vw;
   height: 100vh;

@@ -160,6 +160,9 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     return result;
   }, [files, activeTag, sort]);
 
+  // Keep the ref synced for the stable handleViewMedia callback.
+  useEffect(() => { filteredFilesRef.current = filteredFiles; }, [filteredFiles]);
+
   // Ctrl+A and DEL key handlers
   useEffect(() => {
     const handler = (e) => {
@@ -179,14 +182,21 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     return () => window.removeEventListener("keydown", handler);
   }, [isGridView, filteredFiles, selected, onChanged]);
 
-  const toggleSelect = (e, id) => {
+  const toggleSelect = useCallback((e, id) => {
     e.stopPropagation();
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
+  }, []);
+
+  // Stable view-media callback that can read the current filtered list from a
+  // ref. Keeps VirtualGrid's props referentially stable so React.memo kicks in.
+  const filteredFilesRef = useRef([]);
+  const handleViewMedia = useCallback((f) => {
+    onViewMedia(f, filteredFilesRef.current);
+  }, [onViewMedia]);
 
   const BATCH_SIZE = 50;
 
@@ -221,7 +231,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
     }
   };
 
-  const handleUnhide = async (e, id) => {
+  const handleUnhide = useCallback(async (e, id) => {
     e.stopPropagation();
     try {
       const dest = await openDialog({ directory: true });
@@ -230,13 +240,13 @@ export default function FileList({ category, files, color, onChanged, onEditNote
         onChanged();
       }
     } catch (err) { console.error(err); }
-  };
+  }, [onChanged]);
 
-  const handleDelete = async (e, id) => {
+  const handleDelete = useCallback(async (e, id) => {
     e.stopPropagation();
     try { await invoke("delete_file", { fileId: id }); onChanged(); }
     catch (err) { console.error(err); }
-  };
+  }, [onChanged]);
 
   const handleRestore = async (id) => {
     try { await invoke("restore_file", { fileId: id }); onChanged(); }
@@ -415,7 +425,7 @@ export default function FileList({ category, files, color, onChanged, onEditNote
           files={filteredFiles}
           selected={selected}
           onToggleSelect={toggleSelect}
-          onViewMedia={(f) => onViewMedia(f, filteredFiles)}
+          onViewMedia={handleViewMedia}
           onUnhide={handleUnhide}
           onDelete={handleDelete}
           getThumbnail={getThumbnail}

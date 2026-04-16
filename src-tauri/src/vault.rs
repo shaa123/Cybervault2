@@ -695,6 +695,67 @@ impl VaultManager {
         self.save_index()
     }
 
+    /// Bulk-delete many files with a single index write at the end.
+    /// Replaces the old pattern of calling move_to_trash in a loop, which
+    /// re-serialized the entire index for every file.
+    pub fn move_many_to_trash(&mut self, file_ids: &[String]) -> usize {
+        let mut removed = 0;
+        for id in file_ids {
+            if let Some(entry) = self.index.entries.remove(id) {
+                let path = Path::new(&entry.hidden_path);
+                if path.exists() {
+                    let _ = fs::remove_file(path);
+                    self.cleanup_empty_dirs(&entry.hidden_path);
+                }
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            let _ = self.save_index();
+        }
+        removed
+    }
+
+    /// Bulk unhide — restores each file and writes the index once at the end.
+    pub fn unhide_many(&mut self, file_ids: &[String], destination: &str) -> usize {
+        let mut count = 0;
+        let mut dirty = false;
+        for id in file_ids {
+            let entry = match self.index.entries.get(id).cloned() {
+                Some(e) => e,
+                None => continue,
+            };
+            let hidden = Path::new(&entry.hidden_path);
+            if !hidden.exists() {
+                self.index.entries.remove(id);
+                dirty = true;
+                continue;
+            }
+            let dest = Path::new(destination).join(&entry.original_name);
+            let moved = fs::rename(hidden, &dest).or_else(|_| {
+                fs::copy(hidden, &dest)
+                    .and_then(|_| fs::remove_file(hidden))
+                    .map(|_| ())
+            });
+            if moved.is_err() { continue; }
+            #[cfg(target_os = "windows")]
+            {
+                use std::process::Command;
+                let _ = Command::new("attrib")
+                    .args(["-H", "-S", &dest.to_string_lossy()])
+                    .output();
+            }
+            self.cleanup_empty_dirs(&entry.hidden_path);
+            self.index.entries.remove(id);
+            dirty = true;
+            count += 1;
+        }
+        if dirty {
+            let _ = self.save_index();
+        }
+        count
+    }
+
     pub fn restore_from_trash(&mut self, file_id: &str) -> Result<(), String> {
         let entry = self.index.entries.get_mut(file_id)
             .ok_or("File not found in vault")?;

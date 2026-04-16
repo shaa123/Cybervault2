@@ -99,13 +99,8 @@ fn unhide_file(state: State<AppState>, file_id: String, destination: String) -> 
 #[tauri::command]
 fn unhide_files(state: State<AppState>, file_ids: Vec<String>, destination: String) -> Result<usize, String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let mut count = 0;
-    for id in file_ids {
-        if vault.unhide_file(&id, &destination).is_ok() {
-            count += 1;
-        }
-    }
-    Ok(count)
+    // One index save for the whole batch instead of one per file.
+    Ok(vault.unhide_many(&file_ids, &destination))
 }
 
 #[tauri::command]
@@ -189,9 +184,8 @@ fn delete_tag(state: State<AppState>, category: String, tag: String) -> Result<(
 #[tauri::command]
 fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> Result<(), String> {
     let mut vault = state.vault.lock().map_err(|e| e.to_string())?;
-    for id in file_ids {
-        vault.move_to_trash(&id)?;
-    }
+    // One index save for the whole batch instead of one per file.
+    vault.move_many_to_trash(&file_ids);
     Ok(())
 }
 
